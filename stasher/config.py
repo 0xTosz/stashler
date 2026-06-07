@@ -17,7 +17,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # Uncommon default port for the local UI (avoids the busy 3000/5000/8000/8080 range).
 DEFAULT_UI_PORT = 7137
