@@ -8,7 +8,9 @@ renders it the way it reads in-game so rule authors can write natural patterns.
 
 from __future__ import annotations
 
+import base64
 import re
+from functools import lru_cache
 from typing import Any
 
 _FRAME_RARITY = {
@@ -22,6 +24,74 @@ RARITY_ORDER = {"Normal": 0, "Magic": 1, "Rare": 2, "Unique": 3}
 _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 _MARKUP_PIPE_RE = re.compile(r"\[([^\]|]+)\|([^\]]+)\]")
 _MARKUP_PLAIN_RE = re.compile(r"\[([^\]]+)\]")
+
+# The trade /fetch item JSON carries no item class, but the `icon` URL is a base64
+# token wrapping the art path, e.g. ".../2DItems/Weapons/TwoHandWeapons/Bows/Bow1".
+# A distinctive folder in that path identifies the class, which we map to the trade
+# class names that loot filters use in `Class ==`. Verified against the live archive;
+# folders not seen there are best-effort. See item_class() / _class_from_icon().
+_ICON_TOKEN_RE = re.compile(r"/image/([A-Za-z0-9_-]+)")
+_ICON_CLASS_FOLDERS = {
+    # weapons
+    "Wands": "Wands",
+    "Scepters": "Sceptres",
+    "OneHandMaces": "One Hand Maces",
+    "OneHandSpears": "Spears",
+    "Spears": "Spears",
+    "Crossbows": "Crossbows",
+    "Bows": "Bows",
+    "Staves": "Staves",
+    "WarStaves": "Quarterstaves",
+    "TwoHandMaces": "Two Hand Maces",
+    # off-hand (the art folder "Shields" also holds bucklers/targes, which PoE2 trade
+    # and the NeverSink filters group under "Shields" too)
+    "Foci": "Foci",
+    "Talismans": "Talismans",
+    "Shields": "Shields",
+    "Quivers": "Quivers",
+    # armour
+    "BodyArmours": "Body Armours",
+    "Helmets": "Helmets",
+    "Gloves": "Gloves",
+    "Boots": "Boots",
+    # jewellery / other gear
+    "Rings": "Rings",
+    "Amulets": "Amulets",
+    "Belts": "Belts",
+    "Jewels": "Jewels",
+    "Charms": "Charms",
+}
+
+
+@lru_cache(maxsize=8192)
+def _class_from_icon(icon: str) -> str | None:
+    """Decode the class out of an item's icon art-path, or None if undeterminable."""
+    m = _ICON_TOKEN_RE.search(icon or "")
+    if not m:
+        return None
+    token = m.group(1) + "=" * (-len(m.group(1)) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(token).decode("utf-8", "replace")
+    except (ValueError, UnicodeError):
+        return None
+    for segment in raw.split("/"):
+        cls = _ICON_CLASS_FOLDERS.get(segment)
+        if cls:
+            return cls
+    return None
+
+
+def item_class(item: dict) -> str | None:
+    """The item's class (e.g. ``Bows``, ``Body Armours``).
+
+    Prefers an explicit class if the API ever provides one (``extended.baseClass`` /
+    ``class``); otherwise derives it from the icon art-path, since trade ``/fetch``
+    data omits the class. Returns None when it can't be determined."""
+    ext = item.get("extended") or {}
+    cls = ext.get("baseClass") or item.get("class")
+    if cls:
+        return cls
+    return _class_from_icon(item.get("icon") or "")
 
 
 def rarity(item: dict) -> str | None:

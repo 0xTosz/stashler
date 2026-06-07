@@ -25,8 +25,8 @@ The optional leading count token (``>=1``, ``>=2``, ``==1`` ...) defaults to ``>
 
 Unsupported conditions are ignored with a parse warning (loot filters also match on
 fields Stashler doesn't model, e.g. ``BaseArmour``; the regex checker covers stat
-text). ``Class`` only matches when the item exposes a class; otherwise that condition
-is treated as unmet.
+text). ``Class`` is derived from the item's icon art-path (trade ``/fetch`` data omits
+the class); on the rare item whose class can't be determined, that condition is unmet.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from ..itemdata import (
     is_corrupted,
     is_identified,
     is_mirrored,
+    item_class,
     quality,
     rarity,
     socket_count,
@@ -162,12 +163,6 @@ def _rarity_match(cond: Condition, item: dict) -> bool:
     return any(r.lower() == v.lower() for v in cond.values)
 
 
-def _item_class(item: dict) -> str | None:
-    ext = item.get("extended") or {}
-    cls = ext.get("baseClass") or item.get("class")
-    return cls or None
-
-
 def _bool_match(cond: Condition, value: bool) -> bool:
     """Compare an item flag against a ``True``/``False`` value (default ``True``)."""
     want = cond.values[0].lower() if cond.values else "true"
@@ -205,7 +200,7 @@ def _match_condition(cond: Condition, item: dict) -> bool:
     if kw == "basetype":
         return _text_match(cond, [base_type(item), type_line(item)])
     if kw == "class":
-        cls = _item_class(item)
+        cls = item_class(item)
         return _text_match(cond, [cls]) if cls else False
     if kw == "rarity":
         return _rarity_match(cond, item)

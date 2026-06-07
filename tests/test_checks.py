@@ -1,13 +1,21 @@
 """Tests for the local item-evaluation checker chain."""
 
+import base64
 import json
 
 from stasher.evaluate import evaluate_item, load_checkers
 from stasher.evaluate.checks import item_filter as flt
 from stasher.evaluate.checks import regex_check, unique_roll
 from stasher.evaluate.evaluator import Evaluator
-from stasher.evaluate.itemdata import clean_mod_text, explicit_roll_percents
+from stasher.evaluate.itemdata import clean_mod_text, explicit_roll_percents, item_class
 from stasher.store import Store
+
+
+def _icon(art_path: str) -> str:
+    """Build an icon URL whose base64 token wraps the given art-path, like GGG's."""
+    payload = f'[25,14,{{"f":"{art_path}","w":2,"h":4,"scale":1,"realm":"poe2"}}]'
+    token = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    return f"https://web.poecdn.com/gen/image/{token}/abc/x.png"
 
 
 # --- fixtures -----------------------------------------------------------
@@ -193,6 +201,41 @@ def test_item_filter_has_explicit_mod_by_text(tmp_path):
     # Falls back to rendered stat text when matching a fragment, not an affix name.
     path = _write_filter(tmp_path, 'Show\n    HasExplicitMod "increased Physical Damage"\n')
     assert flt.build_from_file(path).check(rare_crossbow()) != []
+
+
+def test_item_class_derived_from_icon():
+    # Trade /fetch data has no class; it's decoded from the icon art-path.
+    cases = {
+        "2DItems/Weapons/TwoHandWeapons/Bows/Basetypes/Bow08": "Bows",
+        "2DItems/Weapons/OneHandWeapons/Wands/Basetypes/Wand03": "Wands",
+        "2DItems/Weapons/TwoHandWeapons/WarStaves/Warstaff02": "Quarterstaves",
+        "2DItems/Weapons/OneHandWeapons/Scepters/Basetypes/Sceptre04": "Sceptres",
+        "2DItems/Armours/BodyArmours/Basetypes/BodyStr1": "Body Armours",
+        "2DItems/Rings/Basetypes/PrismaticRing": "Rings",
+        "2DItems/Offhand/Shields/Basetypes/Shield1": "Shields",
+    }
+    for art, expected in cases.items():
+        assert item_class({"icon": _icon(art)}) == expected
+    # An explicit class (if the API ever provides one) wins over the icon.
+    assert item_class({"class": "Foci", "icon": _icon("2DItems/Rings/x")}) == "Foci"
+    # Undeterminable -> None (e.g. currency art, or no icon).
+    assert item_class({"icon": _icon("2DItems/Currency/Whatever")}) is None
+    assert item_class({}) is None
+
+
+def test_item_filter_class_matches_via_icon(tmp_path):
+    # A Class-gated block must match an item whose only class signal is the icon.
+    bow = dict(
+        rare_crossbow(),
+        baseType="Warmonger Bow",
+        typeLine="Warmonger Bow",
+        icon=_icon("2DItems/Weapons/TwoHandWeapons/Bows/Basetypes/Bow08"),
+    )
+    path = _write_filter(tmp_path, 'Show\n    Class == "Bows"\n')
+    assert flt.build_from_file(path).check(bow) != []
+    # And a wrong class does not match.
+    miss = _write_filter(tmp_path, 'Show\n    Class == "Wands"\n')
+    assert flt.build_from_file(miss).check(bow) == []
 
 
 # --- engine + persistence (with a self-contained rules file) ------------
