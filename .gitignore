@@ -3,7 +3,12 @@
 *.db-wal
 *.db-shm
 config.local.toml
+rules.local.toml
 .env
+
+# Packaging artifacts
+stashler.ico
+*.spec.bak
 
 # Python
 __pycache__/

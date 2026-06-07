@@ -1,4 +1,4 @@
-"""Command line interface: backfill | live | run | ui."""
+"""Command line interface: backfill | live | run | watch | evaluate | ui | tray."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sys
 import threading
 
 from . import Stasher, __version__
-from .config import Config
+from .config import DEFAULT_UI_PORT, Config
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,11 +37,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     ui_p = sub.add_parser("ui", help="Launch the local web UI")
     ui_p.add_argument("--host", default="127.0.0.1")
-    ui_p.add_argument("--port", type=int, default=5000)
+    ui_p.add_argument("--port", type=int, default=DEFAULT_UI_PORT)
     ui_p.add_argument(
         "--reload",
         action="store_true",
         help="Auto-reload on code/template edits (dev only; live capture resets on each change)",
+    )
+    tray_p = sub.add_parser(
+        "tray", help="Run in the system tray with an Open UI / Quit menu (desktop use)"
+    )
+    tray_p.add_argument("--host", default="127.0.0.1")
+    tray_p.add_argument("--port", type=int, default=DEFAULT_UI_PORT)
+    tray_p.add_argument(
+        "--no-open", action="store_true", help="Don't open the browser on launch"
     )
 
     args = parser.parse_args(argv)
@@ -75,6 +83,8 @@ def _dispatch(args, stasher: Stasher) -> int:
         return _cmd_evaluate(stasher, args.force)
     if args.command == "ui":
         return _cmd_ui(stasher, args.host, args.port, args.reload)
+    if args.command == "tray":
+        return _cmd_tray(stasher, args.host, args.port, not args.no_open)
     return 1
 
 
@@ -161,9 +171,19 @@ def _cmd_ui(stasher: Stasher, host: str, port: int, reload: bool = False) -> int
     from .ui.app import create_app
 
     app = create_app(stasher)
-    print(f"stasher UI on http://{host}:{port}", file=sys.stderr)
+    print(f"Stashler UI on http://{host}:{port}  (data: {stasher.config.data_dir})",
+          file=sys.stderr)
     # debug=reload enables the werkzeug reloader + Jinja template auto-reload.
     app.run(host=host, port=port, debug=reload, use_reloader=reload)
+    return 0
+
+
+def _cmd_tray(stasher: Stasher, host: str, port: int, open_browser: bool) -> int:
+    from .tray import run_tray
+
+    print(f"Stashler tray on http://{host}:{port}  (data: {stasher.config.data_dir})",
+          file=sys.stderr)
+    run_tray(stasher, host=host, port=port, open_browser=open_browser)
     return 0
 
 

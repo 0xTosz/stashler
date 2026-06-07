@@ -38,13 +38,42 @@ pathofexile.com) and `league`. You can also set these later from the UI.
 ## Usage
 
 ```bash
-stasher ui            # local web UI: browse records, review queue, settings, status bar
+stasher tray          # run in the system tray (Open UI / Quit) — best for desktop use
+stasher ui            # local web UI on http://127.0.0.1:7137
 stasher backfill      # one-shot: capture currently-listed items
 stasher watch         # near-live: periodic newest-first poll + occasional full backfill
 stasher live          # (experimental) connect the live websocket — see note below
 stasher run           # backfill, then live
 stasher evaluate      # (re)score archived items against rules.toml; --force re-checks all
 ```
+
+### Standalone desktop app (no Python needed)
+
+Non-technical users can run a single executable — no terminal, just a tray icon:
+
+```bash
+pip install -e ".[build]"     # pyinstaller + tray deps
+python build.py               # -> dist/Stashler.exe
+```
+
+Double-clicking `Stashler.exe` puts a **Stashler** icon in the system tray; its menu has
+**Open Stashler** (opens the browser to the UI) and **Quit**. Account / POESESSID / league
+are entered in the UI (Settings), so nothing needs editing by hand.
+
+### Where data is stored
+
+By default the database, `rules.toml`, and the filter live in a per-user data directory
+(so a packaged app never writes next to its executable):
+
+| OS | Location |
+|----|----------|
+| Windows | `%LOCALAPPDATA%\Stashler\` |
+| macOS | `~/Library/Application Support/Stashler/` |
+| Linux | `$XDG_DATA_HOME/Stashler/` (or `~/.local/share/Stashler/`) |
+
+Override with `--db <path>`, `STASHER_DATA=<dir>`, or `data_dir` / `db_path` in config.
+The UI prints the active data dir on launch. (A `rules.toml` in your *current directory*
+still takes precedence in dev.) The default UI port is **7137** (`--port` to change).
 
 ### Keeping the archive current
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import sys
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
@@ -12,8 +14,22 @@ from .itemcard import build_card
 PAGE_SIZE = 50
 
 
+def _ui_dir() -> str:
+    """The stasher/ui directory holding templates/ and static/. Resolves both in dev and
+    in a PyInstaller bundle (where data is extracted under sys._MEIPASS)."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return os.path.join(meipass, "stasher", "ui")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def create_app(stasher) -> Flask:
-    app = Flask(__name__)
+    ui = _ui_dir()
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(ui, "templates"),
+        static_folder=os.path.join(ui, "static"),
+    )
     store = stasher.store
     worker = stasher.worker()
     # Resume the auto-refresh loop if it was on last session.

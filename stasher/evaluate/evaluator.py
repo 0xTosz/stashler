@@ -25,30 +25,29 @@ from .rules import (
 
 
 class Evaluator:
-    def __init__(self, store, rules_path: str | None = None):
+    def __init__(self, store, rules_path: str | None = None, data_dir: str | None = None):
         self.store = store
         self._configured_path = rules_path
-        self.rules_path = resolve_rules_path(rules_path)
-        self.checkers, self.rules_hash = load_checkers(rules_path)
+        self._data_dir = data_dir
+        self.rules_path = resolve_rules_path(rules_path, data_dir)
+        self.checkers, self.rules_hash = load_checkers(rules_path, data_dir)
 
     # --- rule editing (UI) ---------------------------------------------
 
     def reload(self) -> None:
         """Re-resolve and rebuild the checkers (call after editing the rules)."""
-        self.rules_path = resolve_rules_path(self._configured_path)
-        self.checkers, self.rules_hash = load_checkers(self._configured_path)
+        self.rules_path = resolve_rules_path(self._configured_path, self._data_dir)
+        self.checkers, self.rules_hash = load_checkers(self._configured_path, self._data_dir)
 
     def edit_path(self) -> Path:
-        """Where edits should be written. If the active rules are the packaged
-        default, edits go to a project-local ``rules.toml`` (which then wins)."""
-        if self.rules_path == _DEFAULT_RULES:
-            return Path("rules.toml")
+        """Where edits are written (the resolved writable rules file)."""
         return self.rules_path
 
     def rules_text(self) -> str:
-        """Current rules TOML to show in the editor (active file, default included)."""
+        """Current rules TOML to show in the editor (writable file, or packaged default
+        when it doesn't exist yet)."""
         target = self.edit_path()
-        src = target if target.exists() else self.rules_path
+        src = target if target.exists() else _DEFAULT_RULES
         return src.read_text(encoding="utf-8")
 
     def filter_view(self) -> tuple[bool, str]:

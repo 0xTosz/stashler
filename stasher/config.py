@@ -12,11 +12,27 @@ Resolution order for credentials at runtime: DB settings > Config seed > env var
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 __version__ = "0.1.0"
+
+# Uncommon default port for the local UI (avoids the busy 3000/5000/8000/8080 range).
+DEFAULT_UI_PORT = 7137
+
+
+def user_data_dir() -> Path:
+    """Per-user, writable directory for the DB, rules, and filter -- so a packaged app
+    never tries to write next to its (possibly read-only) executable."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or Path.home()
+        return Path(base) / "Stashler"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Stashler"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / "Stashler"
 
 
 @dataclass
@@ -34,11 +50,13 @@ class Config:
     realm: str = "poe2"
     base_url: str = "https://www.pathofexile.com"
 
-    # Local storage.
-    db_path: str = "stasher.db"
+    # Local storage. Empty -> resolved in __post_init__ to a per-user data directory
+    # (see user_data_dir); the DB, rules.toml, and filter live there.
+    data_dir: str = ""
+    db_path: str = ""
 
-    # Item-evaluation rules file. None -> auto-resolve (rules.local.toml > rules.toml >
-    # packaged default); see stasher.evaluate.rules.resolve_rules_path.
+    # Item-evaluation rules file. None -> auto-resolve (cwd rules.toml > data_dir
+    # rules.toml > packaged default); see stasher.evaluate.rules.resolve_rules_path.
     rules_path: str | None = None
 
     # Etiquette + tuning.
@@ -83,6 +101,14 @@ class Config:
         }
     )
 
+    def __post_init__(self) -> None:
+        # Resolve storage to a per-user data dir unless explicitly overridden, so the DB
+        # and rules don't depend on the working directory (critical for a packaged exe).
+        if not self.data_dir:
+            self.data_dir = str(user_data_dir())
+        if not self.db_path:
+            self.db_path = str(Path(self.data_dir) / "stasher.db")
+
     @property
     def user_agent(self) -> str:
         return f"stasher/{__version__} (+https://github.com/; contact: {self.contact})"
@@ -105,6 +131,7 @@ class Config:
             "poesessid": "STASHER_POESESSID",
             "league": "STASHER_LEAGUE",
             "db_path": "STASHER_DB",
+            "data_dir": "STASHER_DATA",
             "contact": "STASHER_CONTACT",
             "rules_path": "STASHER_RULES",
         }

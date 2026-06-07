@@ -8,6 +8,7 @@ construct it, call :meth:`backfill` / :meth:`run_live`, and read the SQLite file
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Callable
 
 from .backfill import run_backfill
@@ -26,6 +27,9 @@ __all__ = ["Stasher", "Config", "Worker", "__version__"]
 class Stasher:
     def __init__(self, config: Config):
         self.config = config
+        # Make sure the storage directory exists before opening the DB (it may be a
+        # fresh per-user data dir on first run, esp. for the packaged app).
+        Path(config.db_path).resolve().parent.mkdir(parents=True, exist_ok=True)
         self.store = Store(config.db_path)
         self._seed_settings()
         self.limiter = RateLimiter(
@@ -36,7 +40,7 @@ class Stasher:
             restrictive_fraction=config.restrictive_fraction,
         )
         self.client = TradeClient(config, self.store, self.limiter)
-        self.evaluator = Evaluator(self.store, config.rules_path)
+        self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
         self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None
 

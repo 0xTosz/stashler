@@ -31,16 +31,25 @@ _DEFAULT_RULES = _PACKAGE_DIR / "default_rules.toml"
 FILTER_FILENAME = "stasher.filter"
 
 
-def resolve_rules_path(path: str | os.PathLike[str] | None = None) -> Path:
+def resolve_rules_path(
+    path: str | os.PathLike[str] | None = None,
+    data_dir: str | os.PathLike[str] | None = None,
+) -> Path:
+    """The rules file to load *and edit* (the writable target). May not exist yet:
+    on a fresh install we point at ``<data_dir>/rules.toml`` and loading falls back to
+    the packaged default. An existing rules file in the cwd (dev) or data dir wins."""
     if path:
         return Path(path)
     if os.environ.get("STASHER_RULES"):
         return Path(os.environ["STASHER_RULES"])
-    for candidate in ("rules.local.toml", "rules.toml"):
-        p = Path(candidate)
-        if p.exists():
-            return p
-    return _DEFAULT_RULES
+    search_dirs = [Path.cwd()]
+    if data_dir:
+        search_dirs.append(Path(data_dir))
+    for d in search_dirs:
+        for name in ("rules.local.toml", "rules.toml"):
+            if (d / name).exists():
+                return d / name
+    return (Path(data_dir) / "rules.toml") if data_dir else Path("rules.toml")
 
 
 def parse_rules_text(text: str) -> dict:
@@ -92,13 +101,15 @@ def hash_rules(rules_bytes: bytes, data: dict, base_dir: Path) -> str:
 
 def load_checkers(
     path: str | os.PathLike[str] | None = None,
+    data_dir: str | os.PathLike[str] | None = None,
 ) -> tuple[list[Checker], str]:
-    """Return ``(checkers, rules_hash)`` for the resolved rules file."""
-    rules_path = resolve_rules_path(path)
-    if not rules_path.exists():
-        raise FileNotFoundError(f"rules file not found: {rules_path}")
-    raw_bytes = rules_path.read_bytes()
+    """Return ``(checkers, rules_hash)`` for the resolved rules file. If the writable
+    target doesn't exist yet (fresh install), load the packaged default instead while
+    still resolving the filter relative to the writable dir."""
+    rules_path = resolve_rules_path(path, data_dir)
+    src = rules_path if rules_path.exists() else _DEFAULT_RULES
+    raw_bytes = src.read_bytes()
     data = parse_rules_text(raw_bytes.decode("utf-8"))
-    base_dir = rules_path.parent
+    base_dir = rules_path.parent  # the writable dir, where the filter file lives
     checkers = build_checkers(data, base_dir)
     return checkers, hash_rules(raw_bytes, data, base_dir)
