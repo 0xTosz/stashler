@@ -249,7 +249,11 @@ class Store:
         return [(r["hash"], r["raw_json"]) for r in rows]
 
     def queue_items(
-        self, show_all: bool = False, limit: int = 100, offset: int = 0
+        self,
+        show_all: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+        sort: str = "recent",
     ) -> list[sqlite3.Row]:
         sql = (
             "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
@@ -259,7 +263,13 @@ class Store:
         )
         if not show_all:
             sql += " WHERE e.flagged = 1"
-        sql += " ORDER BY e.seen ASC, e.evaluated_at DESC, i.fetched_at DESC LIMIT ? OFFSET ?"
+        # Seen items always sink to the bottom; within that, by recency or match count.
+        primary = (
+            "json_array_length(COALESCE(e.reasons, '[]')) DESC"
+            if sort == "matches"
+            else "e.evaluated_at DESC"
+        )
+        sql += f" ORDER BY e.seen ASC, {primary}, i.fetched_at DESC LIMIT ? OFFSET ?"
         with self._lock:
             return self._conn.execute(sql, (limit, offset)).fetchall()
 

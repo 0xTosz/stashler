@@ -112,11 +112,14 @@ def create_app(stasher) -> Flask:
     @app.route("/queue")
     def queue():
         show_all = request.args.get("all") == "1"
+        sort = "matches" if request.args.get("sort") == "matches" else "recent"
         page = max(1, request.args.get("page", 1, type=int))
         total = store.count_queue(show_all)
         pages = max(1, math.ceil(total / PAGE_SIZE))
         page = min(page, pages)
-        rows = store.queue_items(show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE)
+        rows = store.queue_items(
+            show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, sort=sort
+        )
         items = []
         for r in rows:
             d = dict(r)
@@ -138,6 +141,7 @@ def create_app(stasher) -> Flask:
             page=page,
             pages=pages,
             show_all=show_all,
+            sort=sort,
         )
 
     @app.route("/api/queue/seen/<item_hash>", methods=["POST"])
@@ -229,6 +233,9 @@ def create_app(stasher) -> Flask:
 
     @app.route("/api/auto/start", methods=["POST"])
     def api_auto_start():
+        creds = stasher.client.creds()
+        if not (creds.account and creds.poesessid):
+            return jsonify({"state": worker.auto_state(), "error": "setup required"}), 400
         worker.start_auto()
         return jsonify({"state": worker.auto_state()})
 

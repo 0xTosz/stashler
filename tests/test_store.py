@@ -71,6 +71,27 @@ def test_clear_archive_keeps_settings(tmp_path):
     store.close()
 
 
+def test_queue_sort_by_match_count(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+
+    def add(h, n_reasons):
+        store.insert_item(make_record(h=h, name=h))
+        store.upsert_evaluation(
+            h, types.SimpleNamespace(flagged=True, reasons=["r"] * n_reasons), "rh"
+        )
+
+    add("a", 1)
+    add("b", 3)
+    add("c", 2)
+    by_recent = [r["hash"] for r in store.queue_items(sort="recent")]
+    by_matches = [r["hash"] for r in store.queue_items(sort="matches")]
+    assert by_matches == ["b", "c", "a"]   # most matches first
+    assert set(by_recent) == {"a", "b", "c"}
+    store.close()
+
+
 def test_pipeline_reset_clears_seen():
     from stasher.pipeline import Pipeline
 

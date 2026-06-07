@@ -4,7 +4,7 @@
   <div class="qside">
     {% if reasons %}
     <div class="why">
-      <div class="why-h">Flagged</div>
+      <div class="why-h">Flagged · {{ reasons|length }} match{{ '' if reasons|length == 1 else 'es' }}</div>
       {% for reason in reasons %}<div class="reason">{{ reason }}</div>{% endfor %}
     </div>
     {% else %}

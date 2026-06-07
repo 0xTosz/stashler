@@ -3,11 +3,16 @@
 <div class="qbar">
   <strong>Review queue</strong>
   <span class="muted">{{ unseen }} unseen · {{ total }} {{ 'shown' if show_all else 'flagged' }}</span>
+  <span class="muted" style="margin-left:6px">sort:</span>
+  <a href="{{ url_for('queue', all=1 if show_all else None) }}"
+     class="{{ 'sort-on' if sort != 'matches' else 'muted' }}">newest</a>
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort='matches') }}"
+     class="{{ 'sort-on' if sort == 'matches' else 'muted' }}">most matches</a>
   <span style="flex:1"></span>
   {% if show_all %}
-    <a href="{{ url_for('queue') }}">Hide below-threshold</a>
+    <a href="{{ url_for('queue', sort=sort if sort != 'recent' else None) }}">Hide below-threshold</a>
   {% else %}
-    <a href="{{ url_for('queue', all=1) }}">Show all evaluated</a>
+    <a href="{{ url_for('queue', all=1, sort=sort if sort != 'recent' else None) }}">Show all evaluated</a>
   {% endif %}
   <button id="btn-seen-all">Mark all seen</button>
 </div>
@@ -19,7 +24,7 @@
 
   <div class="qside">
     <div class="why">
-      <div class="why-h">Flagged</div>
+      <div class="why-h">Flagged · {{ it["reasons_list"]|length }} match{{ '' if it["reasons_list"]|length == 1 else 'es' }}</div>
       {% for reason in it["reasons_list"] %}<div class="reason">{{ reason }}</div>
       {% else %}<div class="muted">—</div>{% endfor %}
     </div>
@@ -41,10 +46,11 @@
 {% endfor %}
 
 {% if pages > 1 %}
+{% set sort_arg = sort if sort != 'recent' else None %}
 <div class="qpages">
-  {% if page > 1 %}<a href="{{ url_for('queue', all=1 if show_all else None, page=page-1) }}">← Prev</a>{% endif %}
+  {% if page > 1 %}<a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg, page=page-1) }}">← Prev</a>{% endif %}
   <span class="muted">Page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="{{ url_for('queue', all=1 if show_all else None, page=page+1) }}">Next →</a>{% endif %}
+  {% if page < pages %}<a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg, page=page+1) }}">Next →</a>{% endif %}
 </div>
 {% endif %}
 

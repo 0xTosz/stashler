@@ -6,14 +6,15 @@
   <title>Stashler</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='stashler.png') }}">
   <style>
-    :root { color-scheme: dark; --gold: #d4a657; --gold-dim: #b8893f; }
+    :root { color-scheme: dark; --gold: #d4a657; --gold-dim: #b8893f; --maxw: 1180px; }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #14161a; color: #d7dbe0; }
     a { color: #6cb6ff; text-decoration: none; }
     a:hover { color: #9fccff; }
     header { background: linear-gradient(#1d2027, #181a20); border-bottom: 1px solid #2a2f37;
              padding: 8px 14px; box-shadow: 0 1px 0 #0c0d11; }
-    .nav { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+    .nav { display: flex; gap: 14px; align-items: center; margin: 0 auto 8px;
+           max-width: var(--maxw); }
     .nav .brand { display: flex; align-items: center; gap: 9px; margin-right: 6px; }
     .nav .brand img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
                       border: 1px solid var(--gold-dim); box-shadow: 0 0 0 1px #00000040; }
@@ -22,13 +23,16 @@
                         text-shadow: 0 1px 1px #00000060; }
     .nav .navlink { color: #c2c8d0; padding: 3px 2px; }
     .nav .navlink:hover { color: #fff; }
+    .nav .navlink.attn { color: #ff7a7a; font-weight: 700; }
+    .nav .navlink.attn:hover { color: #ff9a9a; }
     .nav .spacer { flex: 1; }
     button { font: inherit; background: #2a2f37; color: #d7dbe0; border: 1px solid #3a414b;
              border-radius: 5px; padding: 5px 10px; cursor: pointer; }
     button:hover:not(:disabled) { background: #343b45; }
     button:disabled { opacity: .5; cursor: default; }
     button.active { background: #2f5d8a; border-color: #3f7ab0; color: #eaf3ff; }
-    .status { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; font-size: 13px; }
+    .status { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; font-size: 13px;
+              max-width: var(--maxw); margin: 0 auto; }
     .pill { padding: 2px 8px; border-radius: 10px; background: #2a2f37; }
     .pill.live { background: #1f4023; color: #9be3a3; }
     .pill.reconnecting { background: #4a3b16; color: #ffd479; }
@@ -52,7 +56,7 @@
     .feed { max-height: 120px; overflow: auto; min-width: 260px; flex: 1; }
     .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ok { color: #9be3a3; } .rate_limited { color: #ffd479; } .error { color: #ff8a8a; }
-    main { padding: 14px; }
+    main { max-width: var(--maxw); margin: 0 auto; padding: 20px 22px 40px; }
     table { border-collapse: collapse; width: 100%; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #23272e; }
     th { color: #9aa1ab; font-weight: 600; }
@@ -88,13 +92,15 @@
     .tier.suf { color: #87c7ff; background: #16303f; }
     .t-dps { color: #9aa1ab; font-size: 12px; }
     .qside { flex: none; width: 230px; display: flex; flex-direction: column; gap: 8px; }
-    .why { background: #16241a; border: 1px solid #244a2e; border-radius: 6px; padding: 7px 9px; }
-    .why-h { color: #9be3a3; font-weight: 700; font-size: 12px; margin-bottom: 3px; }
-    .why .reason { font-size: 12px; line-height: 1.4; }
+    .why-h { color: #9be3a3; font-weight: 700; font-size: 12px; margin-bottom: 5px; }
+    .why .reason { display: block; font-size: 12px; line-height: 1.35; color: #cfe9d5;
+                   background: #16241a; border: 1px solid #2c5436; border-radius: 5px;
+                   padding: 4px 7px; margin-bottom: 5px; }
     .qmeta { font-size: 12px; line-height: 1.5; }
     .qmeta .val { color: #fff; }
     .whisper { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .seen-tag { align-self: flex-start; }
+    a.sort-on { font-weight: 700; }
     .qbar, .qpages { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .qbar { margin-bottom: 14px; } .qpages { margin-top: 12px; }
 
@@ -120,7 +126,7 @@
       <a class="navlink" href="{{ url_for('records') }}">Records</a>
       <a class="navlink" href="{{ url_for('queue') }}">Queue <span id="s-queue" class="pill" style="display:none">0</span></a>
       <a class="navlink" href="{{ url_for('log') }}">Log</a>
-      <a class="navlink" href="{{ url_for('settings') }}">Settings</a>
+      <a class="navlink" id="nav-settings" href="{{ url_for('settings') }}">Settings</a>
       <button id="btn-auto" title="Keep the archive current: the app polls for new listings and runs periodic full backfills automatically">Auto-refresh: off</button>
       <span class="rate-toggle"
             title="Restrictive reserves part of the API budget so browsing the trade site in your browser doesn't trip the per-IP limit">
@@ -194,14 +200,27 @@
         queueBadge.style.display = s.queue_unseen > 0 ? '' : 'none';
         queueBadge.classList.toggle('live', s.queue_unseen > 0);
       }
+      // Flag missing credentials: red Settings link + a disabled capture button.
+      const setupOk = s.setup_ok;
+      const settingsLink = document.getElementById('nav-settings');
+      if (settingsLink) {
+        settingsLink.classList.toggle('attn', !setupOk);
+        settingsLink.textContent = setupOk ? 'Settings' : 'Settings ⚠';
+      }
+
       const state = s.auto_state || 'off';
-      if (state === 'stopping') {
+      if (!setupOk) {
+        autoBtn.textContent = 'Auto-refresh: off';
+        autoBtn.disabled = true; autoBtn.classList.remove('active');
+        autoBtn.title = 'Set your account name and POESESSID in Settings first';
+      } else if (state === 'stopping') {
         autoBtn.textContent = 'Auto-refresh: stopping…';
         autoBtn.disabled = true; autoBtn.classList.remove('active');
       } else {
         autoBtn.textContent = 'Auto-refresh: ' + state;
         autoBtn.disabled = false;
         autoBtn.classList.toggle('active', state === 'on');
+        autoBtn.title = 'Keep the archive current: the app polls for new listings and runs periodic full backfills automatically';
       }
 
       const errEl = document.getElementById('s-error');

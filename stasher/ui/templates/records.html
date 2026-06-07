@@ -21,7 +21,8 @@
       <th data-key="rarity">Rarity</th>
       <th data-key="price">Price</th>
       <th data-key="flagged">Flag</th>
-      <th data-key="reasons">Why</th>
+      <th data-key="matches">Matches</th>
+      <th data-key="why">Why</th>
       <th data-key="fetched">Fetched</th>
     </tr>
   </thead>
@@ -69,7 +70,8 @@
     view.sort((a, b) => {
       let av = a[k], bv = b[k];
       if (k === 'flagged') { av = a.flagged ? 1 : 0; bv = b.flagged ? 1 : 0; }
-      else if (k === 'reasons') { av = a.reasons.length; bv = b.reasons.length; }
+      else if (k === 'matches') { av = a.reasons.length; bv = b.reasons.length; }
+      else if (k === 'why') { av = a.reasons[0] || ''; bv = b.reasons[0] || ''; }
       if (av < bv) return -d; if (av > bv) return d; return 0;
     });
     page = 1; render();
@@ -83,7 +85,7 @@
     const body = $('rec-body');
     body.innerHTML = '';
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">No items. Turn on Auto-refresh, '
+      body.innerHTML = '<tr><td colspan="8" class="muted">No items. Turn on Auto-refresh, '
         + 'or run a backfill, to populate the archive.</td></tr>';
     }
     for (const r of rows) {
@@ -98,6 +100,7 @@
         '<td>' + (esc(r.rarity) || '—') + '</td>' +
         '<td class="muted">' + (esc(r.price) || '—') + '</td>' +
         '<td class="flag">' + (r.flagged ? '<span class="pill flagged">✓</span>' : '') + '</td>' +
+        '<td class="flag">' + (r.reasons.length ? '<span class="pill flagged">' + r.reasons.length + '</span>' : '<span class="muted">0</span>') + '</td>' +
         '<td>' + why + '</td>' +
         '<td class="muted">' + esc(r.fetched) + '</td>';
       tr.onclick = () => toggle(tr, r.hash);
@@ -125,7 +128,7 @@
     const dtr = document.createElement('tr');
     dtr.className = 'rec-detail';
     const td = document.createElement('td');
-    td.colSpan = 7; td.innerHTML = '<span class="muted">loading…</span>';
+    td.colSpan = 8; td.innerHTML = '<span class="muted">loading…</span>';
     dtr.appendChild(td); tr.after(dtr);
     if (cardCache[hash]) { td.innerHTML = cardCache[hash]; return; }
     try {

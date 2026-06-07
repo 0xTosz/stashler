@@ -330,6 +330,8 @@ class Worker:
             }
         base["auto_running"] = auto_alive
         base["auto_state"] = "stopping" if auto_stopping else ("on" if auto_alive else "off")
+        creds = self.client.creds()
+        base["setup_ok"] = bool(creds.account and creds.poesessid)
         base["items_total"] = self.store.count_items()
         base["queue_unseen"] = self.store.count_unseen()
         base["rate_mode"] = self.limiter.mode
