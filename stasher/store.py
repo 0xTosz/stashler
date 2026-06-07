@@ -317,7 +317,8 @@ class Store:
             self._conn.execute("DELETE FROM items")
             self._conn.execute("DELETE FROM evaluations")
             self._conn.execute(
-                "DELETE FROM meta WHERE key IN ('last_backfill_at', 'last_poll_at')"
+                "DELETE FROM meta WHERE key IN "
+                "('last_backfill_at', 'last_poll_at', 'poll_anchor_hashes')"
             )
             self._conn.commit()
         return n

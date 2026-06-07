@@ -19,14 +19,55 @@ def test_parse_leagues_filters_realm_and_dedups():
 
 
 def test_poll_overflow_detection():
-    # Boundary visible on the page (some item already known) -> caught up, no overflow.
+    # Whole account fits on the page (total <= listed) -> complete, no overflow.
     assert poll_indicates_overflow({"new": 3, "listed": 50, "total": 50}) is False
-    # Whole page is one full set; nothing beyond it -> complete, no overflow.
     assert poll_indicates_overflow({"new": 50, "listed": 50, "total": 50}) is False
-    # Whole newest page was new AND more listings exist beyond it -> overflow.
+    # Off-page items exist and no prior anchor (cold start / all-new page) -> overflow.
     assert poll_indicates_overflow({"new": 100, "listed": 100, "total": 150}) is True
     # Empty page -> nothing to miss.
     assert poll_indicates_overflow({"new": 0, "listed": 0, "total": 0}) is False
+
+
+def test_poll_overflow_anchor_logic():
+    page = [f"h{i}" for i in range(100)]  # newest-first page of 100
+    # An anchor from last poll is still on the page -> boundary reached -> no overflow.
+    res = {"listed": 100, "total": 500, "hashes": page,
+           "prev_anchors": ["h5", "hX", "hY"]}  # h5 still present
+    assert poll_indicates_overflow(res) is False
+    # All anchors pushed off the page (bulk re-index floated 100+ known items up) ->
+    # genuinely-new items may have slipped past page 1 -> overflow.
+    res_bulk = {"listed": 100, "total": 500, "hashes": page,
+                "prev_anchors": ["old1", "old2", "old3"]}
+    assert poll_indicates_overflow(res_bulk) is True
+    # ...but if the whole account still fits on the page, it's complete regardless.
+    assert poll_indicates_overflow({"listed": 100, "total": 100,
+                                    "hashes": page, "prev_anchors": ["old1"]}) is False
+
+
+def test_run_light_poll_tracks_anchors(tmp_path, monkeypatch):
+    store = Store(str(tmp_path / "t.db"))
+
+    class FakeClient:
+        def __init__(self, hashes):
+            self.hashes = hashes
+
+        def search(self, target="account", sort=None):
+            return {"id": "q", "result": self.hashes, "total": 500}
+
+    pipe = _FakePipeline()
+    # First poll: no prior anchors -> overflow (seed), and it records its top hashes.
+    res1 = run_light_poll(FakeClient([f"a{i}" for i in range(100)]), store, pipe)
+    assert res1["prev_anchors"] == []
+    assert poll_indicates_overflow(res1) is True
+
+    # Second poll, page still overlaps -> anchors carry over, no overflow.
+    res2 = run_light_poll(FakeClient([f"a{i}" for i in range(100)]), store, pipe)
+    assert res2["prev_anchors"] == [f"a{i}" for i in range(10)]
+    assert poll_indicates_overflow(res2) is False
+
+    # Third poll, page fully turned over (bulk re-index) -> overflow.
+    res3 = run_light_poll(FakeClient([f"b{i}" for i in range(100)]), store, pipe)
+    assert poll_indicates_overflow(res3) is True
 
 
 def test_build_query_sort_override():
@@ -86,7 +127,8 @@ def test_run_light_poll_uses_newest_and_dedups(tmp_path):
     res = run_light_poll(FakeClient(), store, pipe)
     assert seen["sort"] == NEWEST_SORT
     assert pipe.calls == [(["h1", "h2"], "q1")]
-    assert res == {"new": 2, "listed": 2, "total": 2}
+    assert (res["new"], res["listed"], res["total"]) == (2, 2, 2)
+    assert res["hashes"] == ["h1", "h2"]
     assert store.get_meta("last_poll_at")
     store.close()
 
