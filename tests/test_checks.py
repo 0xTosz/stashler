@@ -7,7 +7,12 @@ from stasher.evaluate import evaluate_item, load_checkers
 from stasher.evaluate.checks import item_filter as flt
 from stasher.evaluate.checks import regex_check, unique_roll
 from stasher.evaluate.evaluator import Evaluator
-from stasher.evaluate.itemdata import clean_mod_text, explicit_roll_percents, item_class
+from stasher.evaluate.itemdata import (
+    clean_mod_text,
+    explicit_roll_percents,
+    item_class,
+    stash_regex,
+)
 from stasher.store import Store
 
 
@@ -221,6 +226,26 @@ def test_item_class_derived_from_icon():
     # Undeterminable -> None (e.g. currency art, or no icon).
     assert item_class({"icon": _icon("2DItems/Currency/Whatever")}) is None
     assert item_class({}) is None
+
+
+def test_stash_regex_prefers_name_then_typeline_then_base():
+    # Rare/unique: the generated name (most distinctive single line).
+    assert stash_regex(rare_crossbow()) == "Agony Core"
+    # Magic (no name): the full magic type line.
+    magic = {"frameType": 1, "name": "", "typeLine": "Minister's Omen Sceptre of the Prodigy",
+             "baseType": "Omen Sceptre"}
+    assert stash_regex(magic) == "Minister's Omen Sceptre of the Prodigy"
+    # Normal (no name, type line == base): the base type.
+    assert stash_regex({"frameType": 0, "baseType": "Omen Sceptre"}) == "Omen Sceptre"
+    assert stash_regex({}) == ""
+
+
+def test_stash_regex_escapes_re2_metacharacters_and_caps_length():
+    # Metacharacters in the anchor text are escaped so the search is a literal match.
+    out = stash_regex({"name": "Doom (of the Abyss) +1"})
+    assert out == r"Doom \(of the Abyss\) \+1"
+    # Never exceeds the search-box limit.
+    assert len(stash_regex({"name": "x" * 400})) == 250
 
 
 def test_item_filter_class_matches_via_icon(tmp_path):

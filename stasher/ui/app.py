@@ -10,6 +10,7 @@ import time
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
+from ..evaluate.itemdata import stash_regex
 from .itemcard import build_card
 
 PAGE_SIZE = 50
@@ -133,9 +134,14 @@ def create_app(stasher) -> Flask:
                 d["reasons_list"] = []
             try:
                 entry = json.loads(r["raw_json"])
-                d["card"] = build_card(entry.get("item") or {})
+                item = entry.get("item") or {}
+                d["card"] = build_card(item)
+                d["stash_tab"] = ((entry.get("listing") or {}).get("stash") or {}).get("name")
+                d["stash_regex"] = stash_regex(item)
             except (ValueError, TypeError):
                 d["card"] = None
+                d["stash_tab"] = None
+                d["stash_regex"] = ""
             items.append(d)
         return render_template(
             "queue.html",

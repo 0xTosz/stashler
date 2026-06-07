@@ -29,12 +29,13 @@
       {% else %}<div class="muted">—</div>{% endfor %}
     </div>
     <div class="qmeta">
-      <div>Listed price:
-        {% if it["price_amount"] %}<span class="val">{{ it["price_amount"] }} {{ it["price_currency"] }}</span>
+      <div>Stash tab:
+        {% if it["stash_tab"] %}<span class="val">{{ it["stash_tab"] }}</span>
         {% else %}<span class="muted">—</span>{% endif %}
       </div>
       {% if it["listed_at"] %}<div class="muted">listed <span class="ts" data-ts="{{ it['listed_at'] }}"></span></div>{% endif %}
-      {% if it["whisper"] %}<div class="whisper muted" title="{{ it['whisper'] }}">{{ it["whisper"] }}</div>{% endif %}
+      {% if it["stash_regex"] %}<button class="btn-regex" data-regex="{{ it['stash_regex'] }}"
+        title="Copies a search that highlights this item in the stash tab (Ctrl-F)">Copy stash regex</button>{% endif %}
     </div>
     {% if it["seen"] %}<span class="muted seen-tag">seen</span>
     {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
@@ -83,5 +84,22 @@
     document.querySelectorAll('.btn-seen').forEach(markSeenUI);
     e.target.disabled = false;
   };
+
+  // Copy the stash-search regex; paste into the in-game stash search (Ctrl-F) to
+  // highlight this item in its tab.
+  document.querySelectorAll('.btn-regex').forEach(btn => {
+    btn.onclick = async () => {
+      const rx = btn.dataset.regex;
+      try { await navigator.clipboard.writeText(rx); }
+      catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = rx; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      const old = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = old; }, 1200);
+    };
+  });
 </script>
 {% endblock %}

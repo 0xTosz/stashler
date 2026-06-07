@@ -114,6 +114,25 @@ def type_line(item: dict) -> str:
     return item.get("typeLine") or item.get("baseType") or ""
 
 
+# Metacharacters of the PoE2 stash search engine (Google RE2), escaped literally.
+_RE2_SPECIAL = re.compile(r"([\\.^$|?*+()\[\]{}])")
+
+
+def stash_regex(item: dict, max_len: int = 250) -> str:
+    """A stash-search regex (PoE2 Ctrl-F, RE2) that highlights this item in its tab.
+
+    Anchors on the most distinctive *single line* of the item's text: a rare/unique's
+    generated name (e.g. ``Dusk Grasp``), else a magic item's full type line (e.g.
+    ``Minister's Omen Sceptre of the Prodigy``), else the base type. These are nearly
+    unique per tab, so false positives are rare; identical items (e.g. two copies of the
+    same unique) can only be told apart by stash position. RE2 has no lookahead, so we
+    don't AND fragments across lines. Capped at ``max_len`` (the search box limit)."""
+    primary = (name(item) or type_line(item) or base_type(item) or "").strip()
+    if not primary:
+        return ""
+    return _RE2_SPECIAL.sub(r"\\\1", primary)[:max_len]
+
+
 def ilvl(item: dict) -> int | None:
     val = item.get("ilvl")
     return val if isinstance(val, int) else None
