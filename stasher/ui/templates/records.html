@@ -1,48 +1,155 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="get" style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-  <input type="text" name="q" value="{{ q }}" placeholder="Search name / type…">
-  <select name="rarity">
+<div class="rec-toolbar">
+  <input id="rec-q" type="text" placeholder="Search name / type…">
+  <select id="rec-rarity">
     <option value="">Any rarity</option>
     {% for r in ["Normal", "Magic", "Rare", "Unique", "Gem", "Currency"] %}
-      <option value="{{ r }}" {{ 'selected' if rarity == r else '' }}>{{ r }}</option>
+      <option value="{{ r }}">{{ r }}</option>
     {% endfor %}
   </select>
-  <button type="submit">Filter</button>
-  <span class="muted" style="align-self:center">{{ total }} items</span>
-</form>
+  <label class="chk"><input type="checkbox" id="rec-flagged"> Flagged only</label>
+  <button id="rec-clear">Clear</button>
+  <span class="muted" id="rec-count">loading…</span>
+</div>
 
-<table>
+<table class="rec">
   <thead>
-    <tr><th>Item</th><th>Type</th><th>Rarity</th><th>Price</th>
-        <th>Listed</th><th>Fetched</th></tr>
-  </thead>
-  <tbody>
-    {% for r in rows %}
     <tr>
-      <td>{{ r["item_name"] or "—" }}</td>
-      <td>{{ r["type_line"] or "—" }}</td>
-      <td>{{ r["rarity"] or "—" }}</td>
-      <td>{% if r["price_amount"] %}{{ r["price_amount"] }} {{ r["price_currency"] }}{% else %}—{% endif %}</td>
-      <td class="muted">{{ r["listed_at"] or "—" }}</td>
-      <td class="muted">{{ r["fetched_at"] }}</td>
+      <th data-key="name">Item</th>
+      <th data-key="type">Type</th>
+      <th data-key="rarity">Rarity</th>
+      <th data-key="price">Price</th>
+      <th data-key="flagged">Flag</th>
+      <th data-key="reasons">Why</th>
+      <th data-key="fetched">Fetched</th>
     </tr>
-    {% else %}
-    <tr><td colspan="6" class="muted">No items archived yet. Set your account in
-        Settings, then start live capture or run a backfill.</td></tr>
-    {% endfor %}
-  </tbody>
+  </thead>
+  <tbody id="rec-body"></tbody>
 </table>
 
-{% if pages > 1 %}
-<div style="margin-top: 12px; display: flex; gap: 10px; align-items: center;">
-  {% if page > 1 %}
-    <a href="{{ url_for('records', q=q, rarity=rarity, page=page-1) }}">← Prev</a>
-  {% endif %}
-  <span class="muted">Page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}
-    <a href="{{ url_for('records', q=q, rarity=rarity, page=page+1) }}">Next →</a>
-  {% endif %}
+<div class="qpages">
+  <button id="rec-prev">← Prev</button>
+  <span class="muted" id="rec-page"></span>
+  <button id="rec-next">Next →</button>
+  <span class="muted">· click a row to inspect</span>
 </div>
-{% endif %}
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let ALL = [], view = [], sortKey = 'fetched', sortDir = -1, page = 1;
+  const PAGE = 100;
+  const cardCache = {};
+
+  function esc(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"]/g,
+      m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  }
+
+  async function load() {
+    try { ALL = await (await fetch('/api/records')).json(); } catch (e) { ALL = []; }
+    apply();
+  }
+
+  function apply() {
+    const q = $('rec-q').value.trim().toLowerCase();
+    const rar = $('rec-rarity').value;
+    const flaggedOnly = $('rec-flagged').checked;
+    view = ALL.filter(r => {
+      if (rar && r.rarity !== rar) return false;
+      if (flaggedOnly && !r.flagged) return false;
+      if (q && !((r.name + ' ' + r.type).toLowerCase().includes(q))) return false;
+      return true;
+    });
+    sortView();
+  }
+
+  function sortView() {
+    const k = sortKey, d = sortDir;
+    view.sort((a, b) => {
+      let av = a[k], bv = b[k];
+      if (k === 'flagged') { av = a.flagged ? 1 : 0; bv = b.flagged ? 1 : 0; }
+      else if (k === 'reasons') { av = a.reasons.length; bv = b.reasons.length; }
+      if (av < bv) return -d; if (av > bv) return d; return 0;
+    });
+    page = 1; render();
+  }
+
+  function render() {
+    const total = view.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE));
+    if (page > pages) page = pages;
+    const rows = view.slice((page - 1) * PAGE, (page - 1) * PAGE + PAGE);
+    const body = $('rec-body');
+    body.innerHTML = '';
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="muted">No items. Turn on Auto-refresh, '
+        + 'or run a backfill, to populate the archive.</td></tr>';
+    }
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.className = 'row'; tr.dataset.hash = r.hash;
+      const why = r.reasons.length
+        ? esc(r.reasons[0]) + (r.reasons.length > 1 ? ' <span class="muted">+' + (r.reasons.length - 1) + '</span>' : '')
+        : '<span class="muted">—</span>';
+      tr.innerHTML =
+        '<td>' + (esc(r.name) || '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (esc(r.type) || '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (esc(r.rarity) || '—') + '</td>' +
+        '<td class="muted">' + (esc(r.price) || '—') + '</td>' +
+        '<td class="flag">' + (r.flagged ? '<span class="pill flagged">✓</span>' : '') + '</td>' +
+        '<td>' + why + '</td>' +
+        '<td class="muted">' + esc(r.fetched) + '</td>';
+      tr.onclick = () => toggle(tr, r.hash);
+      body.appendChild(tr);
+    }
+    $('rec-count').textContent = total + ' item' + (total === 1 ? '' : 's')
+      + (total !== ALL.length ? ' (of ' + ALL.length + ')' : '');
+    $('rec-page').textContent = 'Page ' + page + ' / ' + pages;
+    $('rec-prev').disabled = page <= 1;
+    $('rec-next').disabled = page >= pages;
+    document.querySelectorAll('table.rec th').forEach(th => {
+      const old = th.querySelector('.arrow'); if (old) old.remove();
+      if (th.dataset.key === sortKey) {
+        const s = document.createElement('span');
+        s.className = 'arrow'; s.textContent = sortDir > 0 ? ' ▲' : ' ▼';
+        th.appendChild(s);
+      }
+    });
+  }
+
+  async function toggle(tr, hash) {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains('rec-detail')) { next.remove(); return; }
+    document.querySelectorAll('.rec-detail').forEach(e => e.remove());
+    const dtr = document.createElement('tr');
+    dtr.className = 'rec-detail';
+    const td = document.createElement('td');
+    td.colSpan = 7; td.innerHTML = '<span class="muted">loading…</span>';
+    dtr.appendChild(td); tr.after(dtr);
+    if (cardCache[hash]) { td.innerHTML = cardCache[hash]; return; }
+    try {
+      const html = await (await fetch('/records/' + hash + '/card')).text();
+      cardCache[hash] = html; td.innerHTML = html;
+    } catch (e) { td.innerHTML = '<span class="error">failed to load</span>'; }
+  }
+
+  document.querySelectorAll('table.rec th').forEach(th => {
+    th.onclick = () => {
+      const k = th.dataset.key;
+      if (sortKey === k) sortDir *= -1;
+      else { sortKey = k; sortDir = (k === 'fetched') ? -1 : 1; }
+      sortView();
+    };
+  });
+  $('rec-q').oninput = apply;
+  $('rec-rarity').onchange = apply;
+  $('rec-flagged').onchange = apply;
+  $('rec-clear').onclick = () => {
+    $('rec-q').value = ''; $('rec-rarity').value = ''; $('rec-flagged').checked = false; apply();
+  };
+  $('rec-prev').onclick = () => { if (page > 1) { page--; render(); } };
+  $('rec-next').onclick = () => { page++; render(); };
+  load();
+</script>
 {% endblock %}

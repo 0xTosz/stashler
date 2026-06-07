@@ -1,10 +1,13 @@
-"""Minimal Flask UI: browse records, settings, live status bar, manual backfill."""
+"""Minimal Flask UI: browse records, review queue, settings, live status bar."""
 
 from __future__ import annotations
 
+import json
 import math
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
+
+from .itemcard import build_card
 
 PAGE_SIZE = 50
 
@@ -13,25 +16,121 @@ def create_app(stasher) -> Flask:
     app = Flask(__name__)
     store = stasher.store
     worker = stasher.worker()
+    # Resume the auto-refresh loop if it was on last session.
+    if store.get_setting("auto_mode", "off") == "on":
+        worker.start_auto()
 
     @app.route("/")
     def records():
-        q = request.args.get("q", "").strip() or None
-        rarity = request.args.get("rarity", "").strip() or None
+        # Shell only; the table is populated client-side from /api/records (the whole
+        # dataset is assumed to fit in memory, <10k rows).
+        return render_template("records.html")
+
+    @app.route("/api/records")
+    def api_records():
+        out = []
+        for r in store.all_records():
+            try:
+                reasons = json.loads(r["reasons"]) if r["reasons"] else []
+            except (ValueError, TypeError):
+                reasons = []
+            price = (
+                f"{r['price_amount']:g} {r['price_currency']}"
+                if r["price_amount"] else ""
+            )
+            out.append({
+                "hash": r["hash"],
+                "name": r["item_name"] or "",
+                "type": r["type_line"] or "",
+                "rarity": r["rarity"] or "",
+                "price": price,
+                "flagged": bool(r["flagged"]),
+                "reasons": reasons,
+                "listed": r["listed_at"] or "",
+                "fetched": r["fetched_at"] or "",
+            })
+        return jsonify(out)
+
+    @app.route("/records/<item_hash>/card")
+    def record_card(item_hash):
+        row = store.get_record(item_hash)
+        if not row:
+            return "not found", 404
+        try:
+            entry = json.loads(row["raw_json"])
+        except (ValueError, TypeError):
+            return "bad record", 500
+        try:
+            reasons = json.loads(row["reasons"]) if row["reasons"] else []
+        except (ValueError, TypeError):
+            reasons = []
+        card = build_card(entry.get("item") or {})
+        listing = entry.get("listing") or {}
+        return render_template(
+            "record_detail.html", c=card, reasons=reasons,
+            whisper=listing.get("whisper"),
+        )
+
+    @app.route("/queue")
+    def queue():
+        show_all = request.args.get("all") == "1"
         page = max(1, request.args.get("page", 1, type=int))
-        total = store.count_items(q, rarity)
+        total = store.count_queue(show_all)
         pages = max(1, math.ceil(total / PAGE_SIZE))
         page = min(page, pages)
-        rows = store.iter_items(q, rarity, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE)
+        rows = store.queue_items(show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE)
+        items = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["reasons_list"] = json.loads(r["reasons"]) if r["reasons"] else []
+            except (ValueError, TypeError):
+                d["reasons_list"] = []
+            try:
+                entry = json.loads(r["raw_json"])
+                d["card"] = build_card(entry.get("item") or {})
+            except (ValueError, TypeError):
+                d["card"] = None
+            items.append(d)
         return render_template(
-            "records.html",
-            rows=rows,
+            "queue.html",
+            items=items,
             total=total,
+            unseen=store.count_unseen(),
             page=page,
             pages=pages,
-            q=q or "",
-            rarity=rarity or "",
+            show_all=show_all,
         )
+
+    @app.route("/api/queue/seen/<item_hash>", methods=["POST"])
+    def api_queue_seen(item_hash):
+        store.mark_seen(item_hash)
+        return jsonify({"seen": True})
+
+    @app.route("/api/queue/seen_all", methods=["POST"])
+    def api_queue_seen_all():
+        return jsonify({"marked": store.mark_all_seen()})
+
+    def _render_settings(**extra):
+        evaluator = stasher.evaluator
+        rules_text = extra.pop("rules_text_override", None)
+        filter_text = extra.pop("filter_text_override", None)
+        filter_enabled, filter_disk = evaluator.filter_view()
+        ctx = dict(
+            account_name=store.get_setting("account_name", "") or "",
+            league=store.get_setting("league", stasher.config.league) or "",
+            has_poesessid=bool(store.get_setting("poesessid", "")),
+            saved=request.args.get("saved"),
+            items_total=store.count_items(),
+            rules_path=str(evaluator.edit_path()),
+            rules_text=rules_text if rules_text is not None else evaluator.rules_text(),
+            filter_enabled=filter_enabled,
+            filter_text=filter_text if filter_text is not None else filter_disk,
+            rules_error=None,
+            rules_message=None,
+        )
+        ctx.update(extra)
+        return render_template("settings.html", **ctx)
 
     @app.route("/settings", methods=["GET", "POST"])
     def settings():
@@ -42,47 +141,71 @@ def create_app(stasher) -> Flask:
             if poesessid:  # don't wipe an existing session on an empty submit
                 store.set_setting("poesessid", poesessid)
             return redirect(url_for("settings", saved=1))
-        return render_template(
-            "settings.html",
-            account_name=store.get_setting("account_name", "") or "",
-            league=store.get_setting("league", stasher.config.league) or "",
-            has_poesessid=bool(store.get_setting("poesessid", "")),
-            saved=request.args.get("saved"),
+        return _render_settings()
+
+    @app.route("/settings/rules", methods=["POST"])
+    def settings_rules():
+        rules_text = request.form.get("rules_toml", "")
+        filter_text = request.form.get("filter_text", "")
+        try:
+            stasher.evaluator.save_rules(rules_text, filter_text)
+        except ValueError as exc:
+            return _render_settings(
+                rules_error=str(exc),
+                rules_text_override=rules_text,
+                filter_text_override=filter_text,
+            )
+        # Always re-evaluate the archive so the queue reflects the saved rules (cheap,
+        # local). Otherwise existing items keep stale verdicts and the queue looks wrong.
+        summary = stasher.reevaluate_all(force=True)
+        message = (
+            f"Saved · re-evaluated {summary['evaluated']} items, "
+            f"{summary['flagged']} flagged."
         )
+        return _render_settings(rules_message=message)
+
+    @app.route("/log")
+    def log():
+        rows = list(reversed(store.recent_queries(300)))  # chronological
+        lines = []
+        for r in rows:
+            head = f"{r['ts']}  {r['kind']:<6} {(r['status'] or ''):<12} {r['http_code'] or '':<4}"
+            tail = f"  {r['target'] or ''}"
+            if r["detail"]:
+                tail += f"  | {r['detail']}"
+            lines.append(head + tail)
+        return render_template("log.html", text="\n".join(lines), count=len(rows))
 
     @app.route("/api/status")
     def api_status():
         return jsonify(worker.status())
 
-    @app.route("/api/backfill", methods=["POST"])
-    def api_backfill():
-        started = worker.start_backfill()
-        return jsonify({"started": started, "running": worker.backfill_running()})
+    # Manual backfill routes removed from the UI: Auto-refresh now manages capture
+    # (it decides light poll vs. full backfill itself). The Worker.start_backfill /
+    # pause / resume / stop_backfill methods are kept for reference / library use.
 
-    @app.route("/api/backfill/pause", methods=["POST"])
-    def api_backfill_pause():
-        return jsonify({"paused": worker.pause_backfill()})
+    @app.route("/api/auto/start", methods=["POST"])
+    def api_auto_start():
+        worker.start_auto()
+        return jsonify({"state": worker.auto_state()})
 
-    @app.route("/api/backfill/resume", methods=["POST"])
-    def api_backfill_resume():
-        return jsonify({"resumed": worker.resume_backfill()})
-
-    @app.route("/api/backfill/stop", methods=["POST"])
-    def api_backfill_stop():
-        worker.stop_backfill()
-        return jsonify({"stopped": True})
+    @app.route("/api/auto/stop", methods=["POST"])
+    def api_auto_stop():
+        worker.stop_auto()
+        return jsonify({"state": worker.auto_state()})
 
     @app.route("/api/rate_mode/<mode>", methods=["POST"])
     def api_rate_mode(mode):
         return jsonify({"mode": worker.set_rate_mode(mode)})
 
-    @app.route("/api/live/start", methods=["POST"])
-    def api_live_start():
-        return jsonify({"started": worker.start_live()})
+    @app.route("/api/resync", methods=["POST"])
+    def api_resync():
+        # Destructive: drops archived items + evaluations, then full re-fetch.
+        return jsonify({"started": worker.force_resync()})
 
-    @app.route("/api/live/stop", methods=["POST"])
-    def api_live_stop():
-        worker.stop_live()
-        return jsonify({"stopped": True})
+    # Live-websocket routes (start/stop/test) intentionally removed from the UI: PoE2
+    # encrypts the live payload so it can't be read for capture. The backend methods
+    # (Worker.start_live / stop_live / test_live, stasher/live.py) are kept for reference
+    # and CLI use. Use Auto-refresh (/api/auto/*, above) for near-live capture instead.
 
     return app

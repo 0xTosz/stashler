@@ -72,14 +72,23 @@ class TradeClient:
 
     # --- endpoints ------------------------------------------------------
 
-    def search(self, extra_filters: dict | None = None, target: str = "account") -> dict:
-        """Run an account-scoped trade search. Returns {id, result, total}."""
+    def search(
+        self,
+        extra_filters: dict | None = None,
+        target: str = "account",
+        sort: dict | None = None,
+    ) -> dict:
+        """Run an account-scoped trade search. Returns {id, result, total}.
+
+        ``sort`` overrides the default price sort, e.g. ``{"indexed": "desc"}`` for
+        newest-first (used by the light poll to surface freshly-listed items).
+        """
         creds = self.creds()
         if not creds.account:
             raise TradeAPIError("No account_name configured")
         league = quote(creds.league, safe="")
         url = f"{self.config.base_url}/api/trade2/search/{self.config.realm}/{league}"
-        body = _build_query(creds.account, extra_filters, self.config.status)
+        body = _build_query(creds.account, extra_filters, self.config.status, sort)
         data = self._request("search", "POST", url, target, json=body)
         return {
             "id": data.get("id"),
@@ -141,7 +150,12 @@ class TradeClient:
         )
 
 
-def _build_query(account: str, extra_filters: dict | None, status: str = "any") -> dict:
+def _build_query(
+    account: str,
+    extra_filters: dict | None,
+    status: str = "any",
+    sort: dict | None = None,
+) -> dict:
     """Assemble the trade search payload with the seller-account filter.
 
     ``status`` is the listing-type filter ("any" captures offline / non-buyout
@@ -161,5 +175,5 @@ def _build_query(account: str, extra_filters: dict | None, status: str = "any") 
                 filters[group] = value
     return {
         "query": {"status": {"option": status}, "filters": filters},
-        "sort": {"price": "asc"},
+        "sort": sort or {"price": "asc"},
     }

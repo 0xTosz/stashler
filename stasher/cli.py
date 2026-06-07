@@ -23,6 +23,18 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("backfill", help="Capture currently-listed items, then exit")
     sub.add_parser("live", help="Stream new listings via websocket until interrupted")
     sub.add_parser("run", help="Backfill, then stream live")
+    sub.add_parser(
+        "watch",
+        help="Auto-refresh loop: periodic newest-first poll + occasional full backfill",
+    )
+    eval_p = sub.add_parser(
+        "evaluate", help="Re-run the evaluation rules over archived items"
+    )
+    eval_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-check every item, even those already scored by the current rules",
+    )
     ui_p = sub.add_parser("ui", help="Launch the local web UI")
     ui_p.add_argument("--host", default="127.0.0.1")
     ui_p.add_argument("--port", type=int, default=5000)
@@ -57,6 +69,10 @@ def _dispatch(args, stasher: Stasher) -> int:
     if args.command == "run":
         _cmd_backfill(stasher)
         return _cmd_live(stasher)
+    if args.command == "watch":
+        return _cmd_watch(stasher)
+    if args.command == "evaluate":
+        return _cmd_evaluate(stasher, args.force)
     if args.command == "ui":
         return _cmd_ui(stasher, args.host, args.port, args.reload)
     return 1
@@ -95,6 +111,49 @@ def _cmd_live(stasher: Stasher) -> int:
     except KeyboardInterrupt:
         stop.set()
         print("\nStopped.", file=sys.stderr)
+    return 0
+
+
+def _cmd_watch(stasher: Stasher) -> int:
+    worker = stasher.worker()
+    cfg = stasher.config
+    print(
+        f"Auto-refresh: light poll every {cfg.auto_poll_interval:.0f}s, "
+        f"full backfill every {cfg.auto_full_interval:.0f}s (Ctrl+C to stop)...",
+        file=sys.stderr,
+    )
+    worker.start_auto()
+    idle = threading.Event()
+    last_seen = None
+    try:
+        while True:
+            idle.wait(2.0)
+            st = worker.status()
+            stamp = st.get("auto_last_poll")
+            if stamp and stamp != last_seen:  # print each new tick once
+                last_seen = stamp
+                print(f"  {stamp}  {st.get('auto_last_result')}", file=sys.stderr)
+    except KeyboardInterrupt:
+        worker.stop_auto()
+        print("\nStopped.", file=sys.stderr)
+    return 0
+
+
+def _cmd_evaluate(stasher: Stasher, force: bool) -> int:
+    def progress(done: int, flagged: int) -> None:
+        print(f"  evaluated {done} ({flagged} flagged)…", file=sys.stderr)
+
+    scope = "all items" if force else "items needing evaluation"
+    print(f"Evaluating {scope} with rules {stasher.evaluator.rules_hash}…", file=sys.stderr)
+    summary = stasher.reevaluate_all(progress=progress, force=force)
+    print(
+        f"Done: {summary['flagged']} flagged of {summary['evaluated']} evaluated.",
+        file=sys.stderr,
+    )
+    if summary["by_rule"]:
+        print("By rule:", file=sys.stderr)
+        for rule, n in sorted(summary["by_rule"].items(), key=lambda kv: -kv[1]):
+            print(f"  {n:>5}  {rule}", file=sys.stderr)
     return 0
 
 

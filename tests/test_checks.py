@@ -1,0 +1,251 @@
+"""Tests for the local item-evaluation checker chain."""
+
+import json
+
+from stasher.evaluate import evaluate_item, load_checkers
+from stasher.evaluate.checks import item_filter as flt
+from stasher.evaluate.checks import regex_check, unique_roll
+from stasher.evaluate.evaluator import Evaluator
+from stasher.evaluate.itemdata import clean_mod_text, explicit_roll_percents
+from stasher.store import Store
+
+
+# --- fixtures -----------------------------------------------------------
+
+def rare_crossbow(ilvl=64, mods=None):
+    return {
+        "frameType": 2,
+        "name": "Agony Core",
+        "typeLine": "Cannonade Crossbow",
+        "baseType": "Cannonade Crossbow",
+        "ilvl": ilvl,
+        "explicitMods": mods if mods is not None else [
+            "53% increased [Physical] Damage",
+            "Adds 8 to 11 [Physical|Physical] Damage",
+        ],
+    }
+
+
+def unique_maul(phys_line, aps_line):
+    """A unique whose two rollable mods use the magnitude ranges below."""
+    return {
+        "frameType": 3,
+        "name": "Trephina",
+        "typeLine": "Forge Maul",
+        "baseType": "Forge Maul",
+        "ilvl": 79,
+        "explicitMods": [phys_line, aps_line],
+        "extended": {
+            "mods": {
+                "explicit": [
+                    {"magnitudes": [
+                        {"hash": "explicit.stat_A", "min": "12", "max": "15"},
+                        {"hash": "explicit.stat_A", "min": "22", "max": "25"},
+                    ]},
+                    {"magnitudes": [
+                        {"hash": "explicit.stat_B", "min": "10", "max": "15"},
+                    ]},
+                ]
+            },
+            "hashes": {"explicit": [
+                ["explicit.stat_A", [0]],
+                ["explicit.stat_B", [1]],
+            ]},
+        },
+    }
+
+
+# --- itemdata helpers ---------------------------------------------------
+
+def test_clean_mod_text_strips_markup():
+    assert clean_mod_text("53% increased [Physical] Damage") == "53% increased Physical Damage"
+    assert clean_mod_text("[Critical|Critical Hit] Chance") == "Critical Hit Chance"
+    assert clean_mod_text("Adds 8 to 11 [Physical|Physical] Damage") == "Adds 8 to 11 Physical Damage"
+
+
+def test_explicit_roll_percents_pairs_values_to_ranges():
+    # Adds 15 to 25 -> A maxes both (1.0, 1.0); 15% APS -> B maxes (1.0).
+    pct = explicit_roll_percents(unique_maul("Adds 15 to 25 Physical Damage", "15% increased Attack Speed"))
+    assert pct == [1.0, 1.0, 1.0]
+    # Low rolls -> all at the floor.
+    pct_low = explicit_roll_percents(unique_maul("Adds 12 to 22 Physical Damage", "10% increased Attack Speed"))
+    assert pct_low == [0.0, 0.0, 0.0]
+
+
+# --- regex checker ------------------------------------------------------
+
+def test_regex_matches_affix_and_explains():
+    checker = regex_check.build([
+        {"name": "Big life", "pattern": r"\+\d{2,} to maximum Life", "targets": ["affixes"]}
+    ])
+    hit = checker.check(rare_crossbow(mods=["+85 to maximum Life", "+12 to Strength"]))
+    assert len(hit) == 1
+    assert hit[0].rule_name == "Big life"
+    assert "+85 to maximum Life" in hit[0].explanation
+
+    miss = checker.check(rare_crossbow(mods=["+12 to Strength"]))
+    assert miss == []
+
+
+def test_regex_matches_against_cleaned_markup():
+    checker = regex_check.build([
+        {"name": "Phys dmg", "pattern": "increased Physical Damage", "targets": ["affixes"]}
+    ])
+    assert checker.check(rare_crossbow()) != []
+
+
+def test_regex_target_base_and_name():
+    base_rule = regex_check.build([{"name": "Crossbow", "pattern": "Crossbow", "targets": ["base"]}])
+    assert base_rule.check(rare_crossbow()) != []
+    name_rule = regex_check.build([{"name": "Agony", "pattern": "Agony", "targets": ["name"]}])
+    assert name_rule.check(rare_crossbow()) != []
+
+
+# --- unique roll checker ------------------------------------------------
+
+def test_unique_high_roll_fires_only_when_high():
+    checker = unique_roll.build([{"name": "Perfect", "min_percent": 90, "aggregate": "avg"}])
+    assert checker.check(unique_maul("Adds 15 to 25 Physical Damage", "15% increased Attack Speed")) != []
+    assert checker.check(unique_maul("Adds 12 to 22 Physical Damage", "10% increased Attack Speed")) == []
+
+
+def test_unique_roll_ignores_non_uniques():
+    checker = unique_roll.build([{"name": "Perfect", "min_percent": 1, "aggregate": "avg"}])
+    assert checker.check(rare_crossbow()) == []
+
+
+# --- item filter checker ------------------------------------------------
+
+def _write_filter(tmp_path, text):
+    p = tmp_path / "stasher.filter"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_item_filter_basetype_and_ilvl(tmp_path):
+    path = _write_filter(tmp_path, (
+        "Show  # good crossbow\n"
+        '    BaseType "Cannonade Crossbow"\n'
+        "    ItemLevel >= 80\n"
+    ))
+    checker = flt.build_from_file(path)
+    assert checker.check(rare_crossbow(ilvl=82)) != []
+    assert checker.check(rare_crossbow(ilvl=70)) == []  # ilvl gate fails
+
+
+def test_item_filter_hide_blocks_first(tmp_path):
+    path = _write_filter(tmp_path, (
+        "Hide\n"
+        "    ItemLevel < 80\n"
+        "Show\n"
+        '    BaseType "Cannonade Crossbow"\n'
+    ))
+    checker = flt.build_from_file(path)
+    # ilvl 70 hits the Hide block first -> not flagged, even though Show would match.
+    assert checker.check(rare_crossbow(ilvl=70)) == []
+    assert checker.check(rare_crossbow(ilvl=82)) != []
+
+
+def test_item_filter_rarity_ordinal(tmp_path):
+    path = _write_filter(tmp_path, "Show\n    Rarity <= Magic\n")
+    checker = flt.build_from_file(path)
+    magic = dict(rare_crossbow(), frameType=1)
+    assert checker.check(magic) != []
+    assert checker.check(rare_crossbow()) == []  # Rare > Magic
+
+
+# --- engine + persistence (with a self-contained rules file) ------------
+
+_TEST_RULES = (
+    '[[regex]]\n'
+    'name = "Any life"\n'
+    'pattern = "\\\\+\\\\d+ to maximum Life"\n'
+    'targets = ["affixes"]\n'
+)
+
+
+def _rules_file(tmp_path):
+    p = tmp_path / "rules.toml"
+    p.write_text(_TEST_RULES, encoding="utf-8")
+    return str(p)
+
+
+def test_packaged_default_rules_load():
+    # The packaged fallback must always load and build checkers.
+    from stasher.evaluate.rules import _DEFAULT_RULES
+    checkers, rules_hash = load_checkers(str(_DEFAULT_RULES))
+    assert checkers
+    assert len(rules_hash) == 16
+
+
+def test_evaluate_item_aggregates_reasons(tmp_path):
+    checkers, _ = load_checkers(_rules_file(tmp_path))
+    ev = evaluate_item(rare_crossbow(mods=["+85 to maximum Life"]), checkers)
+    assert ev.flagged
+    assert ev.reasons and any("Life" in r for r in ev.reasons)
+
+    junk = evaluate_item(rare_crossbow(mods=["+1 to Strength"]), checkers)
+    assert not junk.flagged
+
+
+def test_evaluator_persists_and_queue_roundtrip(tmp_path):
+    store = Store(str(tmp_path / "t.db"))
+    from stasher.store import ItemRecord
+
+    good = {"id": "h1", "listing": {}, "item": rare_crossbow(mods=["+85 to maximum Life"])}
+    bad = {"id": "h2", "listing": {}, "item": rare_crossbow(mods=["+1 to Strength"])}
+    for entry in (good, bad):
+        store.insert_item(ItemRecord(
+            hash=entry["id"], account="", listed_at=None, price_amount=None,
+            price_currency=None, price_type=None, item_name=None, type_line="x",
+            rarity="Rare", whisper=None, league=None, raw_json=json.dumps(entry),
+        ))
+
+    ev = Evaluator(store, rules_path=_rules_file(tmp_path))
+    summary = ev.reevaluate_all(force=True)
+    assert summary["evaluated"] == 2
+    assert summary["flagged"] == 1
+
+    queue = store.queue_items()
+    assert len(queue) == 1
+    assert queue[0]["hash"] == "h1"
+    assert store.count_unseen() == 1
+
+    store.mark_all_seen()
+    assert store.count_unseen() == 0
+    store.close()
+
+
+# --- rule editing (Settings UI) -----------------------------------------
+
+def test_save_rules_validates_and_reloads(tmp_path):
+    rules = tmp_path / "rules.toml"
+    rules.write_text(_TEST_RULES, encoding="utf-8")
+    store = Store(str(tmp_path / "t.db"))
+    ev = Evaluator(store, rules_path=str(rules))
+
+    new = (
+        '[[regex]]\nname = "MS"\npattern = "increased Movement Speed"\ntargets = ["affixes"]\n'
+        '[item_filter]\nenabled = true\n'
+    )
+    ev.save_rules(new, "Show\n    Rarity Magic\n    ItemLevel >= 84\n")
+
+    assert "Movement Speed" in rules.read_text(encoding="utf-8")
+    assert (tmp_path / "stasher.filter").exists()  # single app-managed filter file
+    # The reloaded checkers reflect the new rule.
+    item = rare_crossbow(mods=["25% increased Movement Speed"])
+    assert evaluate_item(item, ev.checkers).flagged
+
+
+def test_save_rules_rejects_bad_pattern_without_writing(tmp_path):
+    import pytest
+
+    rules = tmp_path / "rules.toml"
+    rules.write_text(_TEST_RULES, encoding="utf-8")
+    store = Store(str(tmp_path / "t.db"))
+    ev = Evaluator(store, rules_path=str(rules))
+    before = rules.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        ev.save_rules('[[regex]]\nname = "bad"\npattern = "("\ntargets = ["affixes"]\n', "")
+    assert rules.read_text(encoding="utf-8") == before  # unchanged

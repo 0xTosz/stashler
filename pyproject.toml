@@ -24,5 +24,9 @@ stasher = "stasher.cli:main"
 [tool.setuptools.packages.find]
 include = ["stasher*"]
 
+[tool.setuptools.package-data]
+"stasher.evaluate" = ["*.toml"]
+"stasher.ui" = ["templates/*.html", "static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

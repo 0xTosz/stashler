@@ -84,6 +84,19 @@ CREATE TABLE IF NOT EXISTS query_log (
     detail    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_query_log_id ON query_log(id);
+
+-- Derived, recomputable verdict from the local rule engine (see stasher.evaluate).
+-- Flagged items surface in the UI review queue; `seen` sinks reviewed items.
+CREATE TABLE IF NOT EXISTS evaluations (
+    hash         TEXT PRIMARY KEY,
+    flagged      INTEGER NOT NULL,
+    seen         INTEGER NOT NULL DEFAULT 0,
+    seen_at      TEXT,
+    reasons      TEXT,
+    rules_hash   TEXT,
+    evaluated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_eval_flagged_seen ON evaluations(flagged, seen);
 """
 
 
@@ -156,6 +169,25 @@ class Store:
         with self._lock:
             return self._conn.execute(sql, params).fetchall()
 
+    def all_records(self) -> list[sqlite3.Row]:
+        """Every item joined with its evaluation, for the in-memory records table."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
+                "i.price_currency, i.listed_at, i.fetched_at, e.flagged, e.reasons "
+                "FROM items i LEFT JOIN evaluations e ON e.hash = i.hash "
+                "ORDER BY i.fetched_at DESC"
+            ).fetchall()
+
+    def get_record(self, item_hash: str) -> sqlite3.Row | None:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT i.raw_json, e.reasons, e.flagged "
+                "FROM items i LEFT JOIN evaluations e ON e.hash = i.hash "
+                "WHERE i.hash = ?",
+                (item_hash,),
+            ).fetchone()
+
     @staticmethod
     def _items_where(base: str, text: str | None, rarity: str | None):
         clauses: list[str] = []
@@ -169,6 +201,116 @@ class Store:
         if clauses:
             base += " WHERE " + " AND ".join(clauses)
         return base, params
+
+    # --- evaluations / review queue ------------------------------------
+
+    def upsert_evaluation(self, item_hash: str, evaluation, rules_hash: str) -> None:
+        """Store a verdict. Preserves the `seen` flag across re-evaluation."""
+        reasons = json.dumps(list(evaluation.reasons), separators=(",", ":"))
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO evaluations
+                    (hash, flagged, seen, seen_at, reasons, rules_hash, evaluated_at)
+                VALUES (?, ?, 0, NULL, ?, ?, ?)
+                ON CONFLICT(hash) DO UPDATE SET
+                    flagged      = excluded.flagged,
+                    reasons      = excluded.reasons,
+                    rules_hash   = excluded.rules_hash,
+                    evaluated_at = excluded.evaluated_at
+                """,
+                (
+                    item_hash,
+                    1 if evaluation.flagged else 0,
+                    reasons,
+                    rules_hash,
+                    utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+
+    def items_to_evaluate(self, rules_hash: str, force: bool = False) -> list[tuple[str, str]]:
+        """(hash, raw_json) for items lacking a current evaluation (or all, if force)."""
+        with self._lock:
+            if force:
+                rows = self._conn.execute(
+                    "SELECT hash, raw_json FROM items"
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """
+                    SELECT i.hash, i.raw_json
+                    FROM items i
+                    LEFT JOIN evaluations e ON e.hash = i.hash
+                    WHERE e.hash IS NULL OR e.rules_hash IS NULL OR e.rules_hash != ?
+                    """,
+                    (rules_hash,),
+                ).fetchall()
+        return [(r["hash"], r["raw_json"]) for r in rows]
+
+    def queue_items(
+        self, show_all: bool = False, limit: int = 100, offset: int = 0
+    ) -> list[sqlite3.Row]:
+        sql = (
+            "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
+            "i.price_currency, i.price_type, i.whisper, i.listed_at, i.fetched_at, "
+            "i.raw_json, e.reasons, e.flagged, e.seen, e.seen_at, e.evaluated_at "
+            "FROM evaluations e JOIN items i ON i.hash = e.hash"
+        )
+        if not show_all:
+            sql += " WHERE e.flagged = 1"
+        sql += " ORDER BY e.seen ASC, e.evaluated_at DESC, i.fetched_at DESC LIMIT ? OFFSET ?"
+        with self._lock:
+            return self._conn.execute(sql, (limit, offset)).fetchall()
+
+    def count_queue(self, show_all: bool = False) -> int:
+        sql = "SELECT COUNT(*) AS n FROM evaluations"
+        if not show_all:
+            sql += " WHERE flagged = 1"
+        with self._lock:
+            return int(self._conn.execute(sql).fetchone()["n"])
+
+    def count_unseen(self) -> int:
+        with self._lock:
+            return int(
+                self._conn.execute(
+                    "SELECT COUNT(*) AS n FROM evaluations WHERE flagged = 1 AND seen = 0"
+                ).fetchone()["n"]
+            )
+
+    def mark_seen(self, item_hash: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE evaluations SET seen = 1, seen_at = ? WHERE hash = ?",
+                (utc_now_iso(), item_hash),
+            )
+            self._conn.commit()
+
+    def mark_all_seen(self) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE evaluations SET seen = 1, seen_at = ? "
+                "WHERE flagged = 1 AND seen = 0",
+                (utc_now_iso(),),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
+    # --- maintenance ----------------------------------------------------
+
+    def clear_archive(self) -> int:
+        """Drop archived items + their evaluations and reset sync markers, for a force
+        resync. Keeps settings (credentials) and the query log / rate history. Returns
+        the number of items removed."""
+        with self._lock:
+            n = int(self._conn.execute("SELECT COUNT(*) AS c FROM items").fetchone()["c"])
+            self._conn.execute("DELETE FROM items")
+            self._conn.execute("DELETE FROM evaluations")
+            self._conn.execute(
+                "DELETE FROM meta WHERE key IN ('last_backfill_at', 'last_poll_at')"
+            )
+            self._conn.commit()
+        return n
 
     # --- settings & meta ------------------------------------------------
 

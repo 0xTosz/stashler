@@ -3,20 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>stasher</title>
+  <title>Stashler</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='stashler.png') }}">
   <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: dark; --gold: #d4a657; --gold-dim: #b8893f; }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #14161a; color: #d7dbe0; }
     a { color: #6cb6ff; text-decoration: none; }
-    header { background: #1b1e24; border-bottom: 1px solid #2a2f37; padding: 8px 14px; }
+    a:hover { color: #9fccff; }
+    header { background: linear-gradient(#1d2027, #181a20); border-bottom: 1px solid #2a2f37;
+             padding: 8px 14px; box-shadow: 0 1px 0 #0c0d11; }
     .nav { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
-    .nav .brand { font-weight: 700; letter-spacing: .5px; }
+    .nav .brand { display: flex; align-items: center; gap: 9px; margin-right: 6px; }
+    .nav .brand img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
+                      border: 1px solid var(--gold-dim); box-shadow: 0 0 0 1px #00000040; }
+    .nav .brand .name { font: 700 18px/1 "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+                        letter-spacing: .3px; color: var(--gold);
+                        text-shadow: 0 1px 1px #00000060; }
+    .nav .navlink { color: #c2c8d0; padding: 3px 2px; }
+    .nav .navlink:hover { color: #fff; }
     .nav .spacer { flex: 1; }
     button { font: inherit; background: #2a2f37; color: #d7dbe0; border: 1px solid #3a414b;
              border-radius: 5px; padding: 5px 10px; cursor: pointer; }
     button:hover:not(:disabled) { background: #343b45; }
     button:disabled { opacity: .5; cursor: default; }
+    button.active { background: #2f5d8a; border-color: #3f7ab0; color: #eaf3ff; }
     .status { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; font-size: 13px; }
     .pill { padding: 2px 8px; border-radius: 10px; background: #2a2f37; }
     .pill.live { background: #1f4023; color: #9be3a3; }
@@ -48,14 +59,68 @@
     input, select { font: inherit; background: #1b1e24; color: #d7dbe0;
                     border: 1px solid #3a414b; border-radius: 5px; padding: 5px 8px; }
     .muted { color: #8b929c; }
+
+    /* --- shared item tooltip card (queue + records expand) --- */
+    .qcard { display: flex; gap: 14px; align-items: flex-start; padding: 12px;
+             border: 1px solid #23272e; border-radius: 8px; margin-bottom: 12px; background: #15171c; }
+    .qcard.seen { opacity: .45; }
+    .qicon { width: 64px; height: 64px; object-fit: contain; flex: none; }
+    .tooltip { flex: 1; min-width: 320px; max-width: 620px; background: #0c0d11;
+               border: 1px solid #2a2f37; border-radius: 6px; overflow: hidden; text-align: center; }
+    .t-head { padding: 7px 10px; background: linear-gradient(#20242c, #171a20); border-bottom: 1px solid #2a2f37; }
+    .t-name { font-weight: 700; letter-spacing: .3px; }
+    .t-base { font-weight: 600; }
+    .r-Rare .t-head, .r-Rare .t-name, .r-Rare .t-base { color: #f4f06f; }
+    .r-Magic .t-head, .r-Magic .t-base { color: #8aa6ff; }
+    .r-Unique .t-head, .r-Unique .t-name, .r-Unique .t-base { color: #c08a45; }
+    .r-Normal .t-base { color: #d7dbe0; }
+    .t-body { padding: 8px 12px; font-size: 13px; }
+    .t-class { font-size: 12px; }
+    .t-prop, .t-meta { line-height: 1.5; }
+    .t-prop .val, .t-meta .val { color: #fff; }
+    .t-prop .aug { color: #6cb6ff; }
+    .t-sep { height: 1px; background: #23272e; margin: 7px auto; width: 80%; }
+    .t-mod { color: #8aa6ff; line-height: 1.55; }
+    .t-mod.implicit { color: #b6c4ff; }
+    .tier { display: inline-block; min-width: 26px; margin-right: 6px; font-size: 11px;
+            font-weight: 700; border-radius: 3px; padding: 0 4px; vertical-align: middle; }
+    .tier.pre { color: #ff9e80; background: #3a201a; }
+    .tier.suf { color: #87c7ff; background: #16303f; }
+    .t-dps { color: #9aa1ab; font-size: 12px; }
+    .qside { flex: none; width: 230px; display: flex; flex-direction: column; gap: 8px; }
+    .why { background: #16241a; border: 1px solid #244a2e; border-radius: 6px; padding: 7px 9px; }
+    .why-h { color: #9be3a3; font-weight: 700; font-size: 12px; margin-bottom: 3px; }
+    .why .reason { font-size: 12px; line-height: 1.4; }
+    .qmeta { font-size: 12px; line-height: 1.5; }
+    .qmeta .val { color: #fff; }
+    .whisper { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .seen-tag { align-self: flex-start; }
+    .qbar, .qpages { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .qbar { margin-bottom: 14px; } .qpages { margin-top: 12px; }
+
+    /* --- records reactive table --- */
+    .rec-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    table.rec th { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.rec th .arrow { color: #6cb6ff; }
+    table.rec tbody tr.row { cursor: pointer; }
+    table.rec tbody tr.row:hover { background: #1b1e24; }
+    table.rec td.flag { text-align: center; }
+    .pill.flagged { background: #1f4023; color: #9be3a3; }
+    .rec-detail td { background: #101216; }
+    .chk { display: inline-flex; gap: 5px; align-items: center; }
   </style>
 </head>
 <body>
   <header>
     <div class="nav">
-      <span class="brand">stasher</span>
-      <a href="{{ url_for('records') }}">Records</a>
-      <a href="{{ url_for('settings') }}">Settings</a>
+      <a class="brand" href="{{ url_for('records') }}" title="Stashler">
+        <img src="{{ url_for('static', filename='stashler.png') }}" alt="Stashler">
+        <span class="name">Stashler</span>
+      </a>
+      <a class="navlink" href="{{ url_for('records') }}">Records</a>
+      <a class="navlink" href="{{ url_for('queue') }}">Queue <span id="s-queue" class="pill" style="display:none">0</span></a>
+      <a class="navlink" href="{{ url_for('log') }}">Log</a>
+      <a class="navlink" href="{{ url_for('settings') }}">Settings</a>
       <span class="rate-toggle"
             title="Restrictive reserves part of the API budget so browsing the trade site in your browser doesn't trip the per-IP limit">
         <span class="muted">Rate:</span>
@@ -63,12 +128,7 @@
         <button id="rm-restrictive" class="seg">Restrictive</button>
       </span>
       <span class="spacer"></span>
-      <button id="btn-backfill">Backfill</button>
-      <button id="btn-bf-pause">Pause</button>
-      <button id="btn-bf-stop">Stop backfill</button>
-      <span style="width: 10px"></span>
-      <button id="btn-live-start">Start live</button>
-      <button id="btn-live-stop">Stop live</button>
+      <button id="btn-auto" title="Keep the archive current: the app polls for new listings and runs periodic full backfills automatically">Auto-refresh: off</button>
     </div>
     <div class="status">
       <div>
@@ -93,12 +153,16 @@
   <script>
     let st = {};
     async function post(url) { try { await fetch(url, {method: 'POST'}); } catch (e) {} await refresh(); }
-    document.getElementById('btn-backfill').onclick = () => post('/api/backfill');
-    document.getElementById('btn-bf-pause').onclick = () =>
-      post(st.backfill_paused ? '/api/backfill/resume' : '/api/backfill/pause');
-    document.getElementById('btn-bf-stop').onclick = () => post('/api/backfill/stop');
-    document.getElementById('btn-live-start').onclick = () => post('/api/live/start');
-    document.getElementById('btn-live-stop').onclick = () => post('/api/live/stop');
+    // Single capture control. Disable on click (anti-spam) and let refresh() restore the
+    // correct enabled/label state; while the loop is winding down it stays disabled.
+    const autoBtn = document.getElementById('btn-auto');
+    autoBtn.onclick = async () => {
+      if (autoBtn.disabled) return;
+      autoBtn.disabled = true;
+      await post((st.auto_state === 'off' || !st.auto_state) ? '/api/auto/start' : '/api/auto/stop');
+    };
+    // Manual backfill controls removed: Auto-refresh manages backfill vs. light poll itself.
+    // Live-websocket controls removed: PoE2 encrypts the live payload (see runtime.py).
     document.getElementById('rm-full').onclick = () => post('/api/rate_mode/full');
     document.getElementById('rm-restrictive').onclick = () => post('/api/rate_mode/restrictive');
 
@@ -124,14 +188,28 @@
         : s.mode === 'reconnecting' ? 'reconnecting' : '');
       document.getElementById('s-total').textContent = s.items_total;
       document.getElementById('s-new').textContent = s.session_new;
-      document.getElementById('s-error').textContent = s.last_error ? ('⚠ ' + s.last_error) : '';
+      const queueBadge = document.getElementById('s-queue');
+      if (queueBadge) {
+        queueBadge.textContent = s.queue_unseen;
+        queueBadge.style.display = s.queue_unseen > 0 ? '' : 'none';
+        queueBadge.classList.toggle('live', s.queue_unseen > 0);
+      }
+      const state = s.auto_state || 'off';
+      if (state === 'stopping') {
+        autoBtn.textContent = 'Auto-refresh: stopping…';
+        autoBtn.disabled = true; autoBtn.classList.remove('active');
+      } else {
+        autoBtn.textContent = 'Auto-refresh: ' + state;
+        autoBtn.disabled = false;
+        autoBtn.classList.toggle('active', state === 'on');
+      }
 
-      document.getElementById('btn-backfill').disabled = s.backfill_running;
-      const pause = document.getElementById('btn-bf-pause');
-      pause.disabled = !s.backfill_running;
-      pause.textContent = s.backfill_paused ? 'Resume' : 'Pause';
-      document.getElementById('btn-bf-stop').disabled = !s.backfill_running;
-      document.getElementById('btn-live-start').disabled = s.live_connected;
+      const errEl = document.getElementById('s-error');
+      if (s.last_error) errEl.textContent = '⚠ ' + s.last_error;
+      else if (state !== 'off' && s.auto_last_result)
+        errEl.textContent = 'auto: ' + s.auto_last_result + (s.auto_last_poll ? ' · ' + s.auto_last_poll : '');
+      else errEl.textContent = '';
+
       document.getElementById('rm-full').classList.toggle('active', s.rate_mode === 'full');
       document.getElementById('rm-restrictive').classList.toggle('active', s.rate_mode === 'restrictive');
 

@@ -37,10 +37,34 @@ class Config:
     # Local storage.
     db_path: str = "stasher.db"
 
+    # Item-evaluation rules file. None -> auto-resolve (rules.local.toml > rules.toml >
+    # packaged default); see stasher.evaluate.rules.resolve_rules_path.
+    rules_path: str | None = None
+
     # Etiquette + tuning.
     contact: str = "you@example.com"
     rate_limit_margin: int = 1
     request_timeout: float = 30.0
+
+    # Live websocket keepalive. Browsers don't send client pings (the server pings them);
+    # PoE's live endpoint appears to close client-initiated pings with 1008, so we default
+    # to None (disabled) and rely on the server's pings + our automatic pongs. Set a
+    # number of seconds here only if you need the client to ping.
+    live_ping_interval: float | None = None
+    live_ping_timeout: float = 15.0
+
+    # When true, log every raw frame received on the live socket to the query feed
+    # (verbose; for diagnosing why pushes aren't arriving). Toggle via STASHER_LIVE_DEBUG.
+    live_debug: bool = False
+
+    # Auto-refresh loop (the supported near-live alternative to the encrypted live feed):
+    # a cheap newest-first light poll every `auto_poll_interval` seconds. A full adaptive
+    # backfill runs once to seed, then again only when a poll signals it may have
+    # overflowed (whole newest page was new + more listings exist). `auto_full_interval`
+    # is an optional timed safety net: 0 disables it; a positive value forces a periodic
+    # full backfill that often anyway.
+    auto_poll_interval: float = 180.0
+    auto_full_interval: float = 0.0
 
     # Rate-limit mode: "full" uses the normal margin; "restrictive" additionally
     # reserves `restrictive_fraction` of every bucket so you can browse the trade site
@@ -82,10 +106,16 @@ class Config:
             "league": "STASHER_LEAGUE",
             "db_path": "STASHER_DB",
             "contact": "STASHER_CONTACT",
+            "rules_path": "STASHER_RULES",
         }
         for field_name, env_name in env_map.items():
             if os.environ.get(env_name):
                 data[field_name] = os.environ[env_name]
+
+        if os.environ.get("STASHER_LIVE_DEBUG"):
+            data["live_debug"] = os.environ["STASHER_LIVE_DEBUG"].lower() not in (
+                "0", "false", "no", "",
+            )
 
         data.update({k: v for k, v in overrides.items() if v is not None})
 

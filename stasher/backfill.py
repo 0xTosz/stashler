@@ -18,9 +18,40 @@ from .store import Store, utc_now_iso
 RESULT_CAP = 100  # usable results from one search
 ILVL_MIN, ILVL_MAX = 0, 100
 RARITIES = ["normal", "magic", "rare", "unique"]
+NEWEST_SORT = {"indexed": "desc"}  # surface freshly-listed items first
 
 ProgressFn = Callable[[str, int, int], None]  # (label, partitions_done, items_new)
 StopFn = Callable[[], bool]
+
+
+def run_light_poll(client: TradeClient, store: Store, pipeline: Pipeline) -> dict:
+    """One cheap account search (newest-first) -> fetch only the not-yet-archived hashes.
+
+    The recurring poll for near-live capture: a single search call plus fetches for
+    genuinely new listings. Catches everything when your active listings fit in one page
+    (<= ~100); the periodic full backfill covers the rare overflow. Falls back to the
+    default sort if the server rejects the newest-first sort key.
+    """
+    try:
+        res = client.search(target="poll (newest)", sort=NEWEST_SORT)
+    except TradeAPIError:
+        res = client.search(target="poll")
+    stored = pipeline.submit_hashes(res["result"], res["id"])
+    store.set_meta("last_poll_at", utc_now_iso())
+    return {"new": stored, "listed": len(res["result"]), "total": res["total"]}
+
+
+def poll_indicates_overflow(res: dict) -> bool:
+    """True if a light poll may have missed newly-listed items.
+
+    With newest-first sorting, the poll has provably caught up whenever its page still
+    contains an item we already had (``new < listed``) -- the new/old boundary is on the
+    page. Only when the *entire* newest page was new (``new == listed``) AND more
+    listings exist beyond that page (``total > listed``) could older-but-still-new items
+    have been pushed off page 1; that's the one case worth a full re-sync.
+    """
+    listed = res["listed"]
+    return listed > 0 and res["new"] == listed and res["total"] > listed
 
 
 def run_backfill(

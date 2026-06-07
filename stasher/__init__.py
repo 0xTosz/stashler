@@ -13,6 +13,7 @@ from typing import Callable
 from .backfill import run_backfill
 from .client import TradeClient
 from .config import Config, __version__
+from .evaluate import Evaluator
 from .live import run_live
 from .pipeline import Pipeline
 from .ratelimit import RateLimiter
@@ -35,7 +36,8 @@ class Stasher:
             restrictive_fraction=config.restrictive_fraction,
         )
         self.client = TradeClient(config, self.store, self.limiter)
-        self.pipeline = Pipeline(self.client, self.store)
+        self.evaluator = Evaluator(self.store, config.rules_path)
+        self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None
 
     @classmethod
@@ -77,9 +79,21 @@ class Stasher:
         self.backfill()
         self.run_live(stop_event)
 
+    # --- evaluation -----------------------------------------------------
+
+    def reevaluate_all(
+        self,
+        progress: Callable[[int, int], None] | None = None,
+        force: bool = False,
+    ) -> dict:
+        """Re-run the rule checkers over stored items. Returns a summary dict."""
+        return self.evaluator.reevaluate_all(progress, force)
+
     def worker(self) -> Worker:
         if self._worker is None:
-            self._worker = Worker(self.config, self.store, self.limiter, self.client)
+            self._worker = Worker(
+                self.config, self.store, self.limiter, self.client, self.evaluator
+            )
         return self._worker
 
     # --- lifecycle ------------------------------------------------------

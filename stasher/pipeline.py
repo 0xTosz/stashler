@@ -20,10 +20,12 @@ class Pipeline:
         client: TradeClient,
         store: Store,
         on_stored: Callable[[int], None] | None = None,
+        evaluator=None,
     ):
         self.client = client
         self.store = store
         self.on_stored = on_stored
+        self.evaluator = evaluator
         self._seen: set[str] = set()
         self._lock = threading.Lock()
 
@@ -45,6 +47,13 @@ class Pipeline:
                 rec = record_from_fetch_entry(entry, league)
                 if rec.hash and self.store.insert_item(rec):
                     stored += 1
+                    if self.evaluator is not None:
+                        # Score new captures so they reach the review queue immediately.
+                        # Never let an evaluation hiccup drop a stored item.
+                        try:
+                            self.evaluator.evaluate_entry(entry)
+                        except Exception:  # noqa: BLE001
+                            pass
         if stored and self.on_stored:
             self.on_stored(stored)
         return stored
@@ -67,6 +76,11 @@ class Pipeline:
         with self._lock:
             for h in hashes:
                 self._seen.discard(h)
+
+    def reset(self) -> None:
+        """Forget the in-memory dedup set so cleared hashes get re-fetched (force resync)."""
+        with self._lock:
+            self._seen.clear()
 
 
 def _chunks(items: list[str], size: int) -> Iterable[list[str]]:

@@ -1,0 +1,37 @@
+{# Shared tooltip-style item card. Expects `c` = the dict from itemcard.build_card. #}
+{% if c.icon %}<img class="qicon" loading="lazy" src="{{ c.icon }}" alt="">{% endif %}
+<div class="tooltip r-{{ c.rarity }}">
+  <div class="t-head">
+    {% if c.name %}<div class="t-name">{{ c.name }}</div>{% endif %}
+    <div class="t-base">{{ c.base or "—" }}</div>
+  </div>
+  <div class="t-body">
+    {% if c.klass %}<div class="t-class muted">{{ c.klass }}</div>{% endif %}
+    {% for p in c.props %}
+      <div class="t-prop">{{ p.label }}: <span class="{{ 'aug' if p.aug else 'val' }}">{{ p.value }}</span></div>
+    {% endfor %}
+    {% if c.props %}<div class="t-sep"></div>{% endif %}
+    {% if c.ilvl %}<div class="t-meta">Item Level: <span class="val">{{ c.ilvl }}</span></div>{% endif %}
+    {% if c.reqs %}<div class="t-meta muted">Requires {{ c.reqs }}</div>{% endif %}
+    {% if c.implicits %}
+      <div class="t-sep"></div>
+      {% for m in c.implicits %}<div class="t-mod implicit">{{ m }}</div>{% endfor %}
+    {% endif %}
+    {% if c.explicits %}
+      <div class="t-sep"></div>
+      {% for m in c.explicits %}
+        <div class="t-mod">
+          {% if m.tier %}<span class="tier {{ 'pre' if m.tier.startswith('P') else 'suf' }}">{{ m.tier }}</span>{% endif %}
+          <span class="modtext">{{ m.text }}</span>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% if c.dps %}
+      <div class="t-sep"></div>
+      <div class="t-dps">DPS {{ '%.1f'|format(c.dps.dps) }}
+        {% if c.dps.pdps %}· pDPS {{ '%.1f'|format(c.dps.pdps) }}{% endif %}
+        {% if c.dps.edps %}· eDPS {{ '%.1f'|format(c.dps.edps) }}{% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>

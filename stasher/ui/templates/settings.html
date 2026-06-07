@@ -20,4 +20,89 @@
   </label>
   <div><button type="submit">Save</button></div>
 </form>
+
+<hr style="border:none; border-top:1px solid #23272e; margin:22px 0">
+
+<h2>Evaluation rules</h2>
+<p class="muted">Items are flagged into the <a href="{{ url_for('queue') }}">queue</a> when
+  any rule matches. Saving applies the rules and re-scores your whole archive so the queue
+  always reflects what you see here.</p>
+
+{% if rules_error %}<p class="error">⚠ {{ rules_error }} — nothing was saved.</p>{% endif %}
+{% if rules_message %}<p class="ok">{{ rules_message }}</p>{% endif %}
+
+<form method="post" action="{{ url_for('settings_rules') }}" style="display:grid; gap:14px; max-width:820px;">
+  <label>Rules
+    <textarea name="rules_toml" rows="16" spellcheck="false" class="code">{{ rules_text }}</textarea>
+    <small class="muted">Checker types: <code>[[regex]]</code> (name, pattern, targets),
+      <code>[[unique_roll]]</code> (name, min_percent, aggregate),
+      <code>[item_filter]</code> (<code>enabled = true|false</code> — edit the filter below).</small>
+  </label>
+
+  <fieldset style="border:1px solid #2a2f37; border-radius:6px; padding:12px;">
+    <legend class="muted">Filter file
+      <span class="{{ 'ok' if filter_enabled else 'muted' }}">({{ 'enabled' if filter_enabled else 'disabled' }})</span>
+    </legend>
+    <div style="margin-bottom:8px;">
+      <input type="file" id="filter-upload" accept=".filter,.txt,text/plain">
+      <small class="muted">Upload to replace the contents below (review, then Save). Toggle it
+        on/off with <code>[item_filter] enabled</code> in Rules above.</small>
+    </div>
+    <textarea id="filter-text" name="filter_text" rows="12" spellcheck="false" class="code">{{ filter_text }}</textarea>
+    <small class="muted">Loot-filter subset: <code>Show</code>/<code>Hide</code> blocks
+      with BaseType, Class, Rarity, ItemLevel, Quality, Sockets.</small>
+  </fieldset>
+
+  <div><button type="submit">Save &amp; re-evaluate</button></div>
+</form>
+
+<hr style="border:none; border-top:1px solid #23272e; margin:22px 0">
+
+<h2>Danger zone</h2>
+<div style="border:1px solid #5a2a2a; border-radius:6px; padding:12px; max-width:820px;">
+  <strong>Force resync</strong>
+  <p class="muted" style="margin:6px 0 10px">
+    Deletes all <strong id="resync-count">{{ items_total }}</strong> archived items and their
+    evaluations, then re-fetches everything currently listed from scratch. Use this only if
+    the archive looks wrong (e.g. an interrupted initial sync). Your settings and rules are
+    kept. This can take a while and uses API requests.
+  </p>
+  <button id="btn-resync" style="border-color:#7a3a3a;">Force resync (drop archive &amp; re-fetch)</button>
+  <span id="resync-msg" class="muted" style="margin-left:8px"></span>
+</div>
+<script>
+  document.getElementById('btn-resync').onclick = async () => {
+    const n = document.getElementById('resync-count').textContent;
+    if (!confirm('Delete all ' + n + ' archived items and re-fetch from scratch?\n\n' +
+                 'Your settings/rules are kept. This cannot be undone.')) return;
+    const btn = document.getElementById('btn-resync');
+    const msg = document.getElementById('resync-msg');
+    btn.disabled = true; msg.className = 'muted'; msg.textContent = 'clearing & re-fetching…';
+    try {
+      const r = await (await fetch('/api/resync', {method: 'POST'})).json();
+      msg.className = r.started ? 'ok' : 'error';
+      msg.textContent = r.started
+        ? 'resync started — watch the status bar; records will repopulate.'
+        : 'a backfill/resync is already running.';
+    } catch (e) { msg.className = 'error'; msg.textContent = 'request failed.'; }
+    btn.disabled = false;
+  };
+</script>
+
+<style>
+  textarea.code { width:100%; font: 13px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace;
+    background:#0c0d11; color:#d7dbe0; border:1px solid #2a2f37; border-radius:6px;
+    padding:8px 10px; resize:vertical; white-space:pre; overflow:auto; }
+  fieldset legend { padding:0 6px; }
+</style>
+<script>
+  const up = document.getElementById('filter-upload');
+  if (up) up.onchange = () => {
+    const f = up.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById('filter-text').value = reader.result; };
+    reader.readAsText(f);
+  };
+</script>
 {% endblock %}

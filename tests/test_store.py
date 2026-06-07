@@ -52,6 +52,34 @@ def test_query_log(tmp_path):
     store.close()
 
 
+def test_clear_archive_keeps_settings(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+    store.set_setting("account_name", "Me#1")
+    store.set_meta("last_poll_at", "2026-01-01T00:00:00+00:00")
+    store.insert_item(make_record(h="h1"))
+    store.upsert_evaluation("h1", types.SimpleNamespace(flagged=True, reasons=["r"]), "rh")
+    assert store.count_items() == 1 and store.count_queue(show_all=True) == 1
+
+    removed = store.clear_archive()
+    assert removed == 1
+    assert store.count_items() == 0
+    assert store.count_queue(show_all=True) == 0       # evaluations gone too
+    assert store.get_setting("account_name") == "Me#1"  # settings kept
+    assert store.get_meta("last_poll_at") is None        # sync marker reset
+    store.close()
+
+
+def test_pipeline_reset_clears_seen():
+    from stasher.pipeline import Pipeline
+
+    p = Pipeline(client=None, store=None)
+    p._seen.update(["a", "b"])
+    p.reset()
+    assert p._seen == set()
+
+
 def test_record_from_fetch_entry():
     entry = {
         "id": "hash1",

@@ -1,0 +1,33 @@
+# Packaged fallback rules for stasher's item evaluator.
+# Copy this to ./rules.toml (or rules.local.toml) in your working directory to edit.
+# Every captured item is run against all rules below; if any fires, the item shows up
+# in the UI review queue with the explanation. Re-run `stasher evaluate` after editing.
+
+# --- regex: match item name / base / affix text (in-game wording, no [a|b] markup) ---
+
+[[regex]]
+name = "High flat life"
+pattern = "\\+\\d{2,} to maximum Life"
+targets = ["affixes"]
+
+[[regex]]
+name = "Movement speed"
+pattern = "increased Movement Speed"
+targets = ["affixes"]
+
+[[regex]]
+name = "Plus to a skill level"
+pattern = "\\+\\d+ to Level of all .* Skills"
+targets = ["affixes"]
+
+# --- unique_roll: flag uniques rolling near the top of their ranges ---
+
+[[unique_roll]]
+name = "High-roll unique"
+min_percent = 88
+aggregate = "avg"
+
+# --- item_filter: a single app-managed loot-filter file, edited in the UI Settings ---
+# Off by default; turn on after adding filter content in Settings (or uploading a file).
+[item_filter]
+enabled = false

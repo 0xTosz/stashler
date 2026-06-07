@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="qbar">
+  <strong>Review queue</strong>
+  <span class="muted">{{ unseen }} unseen · {{ total }} {{ 'shown' if show_all else 'flagged' }}</span>
+  <span style="flex:1"></span>
+  {% if show_all %}
+    <a href="{{ url_for('queue') }}">Hide below-threshold</a>
+  {% else %}
+    <a href="{{ url_for('queue', all=1) }}">Show all evaluated</a>
+  {% endif %}
+  <button id="btn-seen-all">Mark all seen</button>
+</div>
+
+{% for it in items %}
+{% set c = it["card"] %}
+<div class="qcard {{ 'seen' if it['seen'] else '' }}" data-hash="{{ it['hash'] }}">
+  {% include "_item_card.html" %}
+
+  <div class="qside">
+    <div class="why">
+      <div class="why-h">Flagged</div>
+      {% for reason in it["reasons_list"] %}<div class="reason">{{ reason }}</div>
+      {% else %}<div class="muted">—</div>{% endfor %}
+    </div>
+    <div class="qmeta">
+      <div>Listed price:
+        {% if it["price_amount"] %}<span class="val">{{ it["price_amount"] }} {{ it["price_currency"] }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </div>
+      {% if it["listed_at"] %}<div class="muted">listed {{ it["listed_at"] }}</div>{% endif %}
+      {% if it["whisper"] %}<div class="whisper muted" title="{{ it['whisper'] }}">{{ it["whisper"] }}</div>{% endif %}
+    </div>
+    {% if it["seen"] %}<span class="muted seen-tag">seen</span>
+    {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
+  </div>
+</div>
+{% else %}
+<p class="muted">Queue is empty. New captures that match an evaluation rule appear here —
+  edit <code>rules.toml</code> and run <code>stasher evaluate</code> to (re)score archived items.</p>
+{% endfor %}
+
+{% if pages > 1 %}
+<div class="qpages">
+  {% if page > 1 %}<a href="{{ url_for('queue', all=1 if show_all else None, page=page-1) }}">← Prev</a>{% endif %}
+  <span class="muted">Page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="{{ url_for('queue', all=1 if show_all else None, page=page+1) }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+
+<script>
+  async function markSeen(hash) {
+    try { await fetch('/api/queue/seen/' + hash, {method: 'POST'}); } catch (e) {}
+  }
+  document.querySelectorAll('.btn-seen').forEach(btn => {
+    btn.onclick = async () => { await markSeen(btn.dataset.hash); location.reload(); };
+  });
+  document.getElementById('btn-seen-all').onclick = async () => {
+    try { await fetch('/api/queue/seen_all', {method: 'POST'}); } catch (e) {}
+    location.reload();
+  };
+</script>
+{% endblock %}

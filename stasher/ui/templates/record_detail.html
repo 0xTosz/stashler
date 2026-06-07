@@ -1,0 +1,15 @@
+{# Expanded detail for one record: the item card + why it was (or wasn't) flagged. #}
+<div class="qcard" style="margin:0;">
+  {% include "_item_card.html" %}
+  <div class="qside">
+    {% if reasons %}
+    <div class="why">
+      <div class="why-h">Flagged</div>
+      {% for reason in reasons %}<div class="reason">{{ reason }}</div>{% endfor %}
+    </div>
+    {% else %}
+    <div class="muted">Not flagged by current rules.</div>
+    {% endif %}
+    {% if whisper %}<div class="whisper muted" title="{{ whisper }}">{{ whisper }}</div>{% endif %}
+  </div>
+</div>
