@@ -1,0 +1,17 @@
+# Secrets / local data — POESESSID lives in the DB/config, never commit it
+*.db
+*.db-wal
+*.db-shm
+config.local.toml
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/

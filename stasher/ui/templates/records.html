@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<form method="get" style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search name / type…">
+  <select name="rarity">
+    <option value="">Any rarity</option>
+    {% for r in ["Normal", "Magic", "Rare", "Unique", "Gem", "Currency"] %}
+      <option value="{{ r }}" {{ 'selected' if rarity == r else '' }}>{{ r }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+  <span class="muted" style="align-self:center">{{ total }} items</span>
+</form>
+
+<table>
+  <thead>
+    <tr><th>Item</th><th>Type</th><th>Rarity</th><th>Price</th>
+        <th>Listed</th><th>Fetched</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r["item_name"] or "—" }}</td>
+      <td>{{ r["type_line"] or "—" }}</td>
+      <td>{{ r["rarity"] or "—" }}</td>
+      <td>{% if r["price_amount"] %}{{ r["price_amount"] }} {{ r["price_currency"] }}{% else %}—{% endif %}</td>
+      <td class="muted">{{ r["listed_at"] or "—" }}</td>
+      <td class="muted">{{ r["fetched_at"] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No items archived yet. Set your account in
+        Settings, then start live capture or run a backfill.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if pages > 1 %}
+<div style="margin-top: 12px; display: flex; gap: 10px; align-items: center;">
+  {% if page > 1 %}
+    <a href="{{ url_for('records', q=q, rarity=rarity, page=page-1) }}">← Prev</a>
+  {% endif %}
+  <span class="muted">Page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}
+    <a href="{{ url_for('records', q=q, rarity=rarity, page=page+1) }}">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

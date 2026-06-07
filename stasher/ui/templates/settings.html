@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Settings</h2>
+{% if saved %}<p class="ok">Saved.</p>{% endif %}
+<form method="post" style="max-width: 480px; display: grid; gap: 12px;">
+  <label>Account name
+    <input type="text" name="account_name" value="{{ account_name }}"
+           placeholder="YourName#1234" style="width:100%">
+    <small class="muted">The trade "Seller" name <strong>including</strong> the
+      #discriminator, e.g. <code>YourName#1234</code> — the search needs it.</small>
+  </label>
+  <label>League
+    <input type="text" name="league" value="{{ league }}" style="width:100%">
+  </label>
+  <label>POESESSID
+    <input type="password" name="poesessid"
+           placeholder="{{ '•••••• (set — leave blank to keep)' if has_poesessid else 'paste cookie value' }}"
+           style="width:100%">
+    <small class="muted">Your pathofexile.com session cookie. Stored locally only.</small>
+  </label>
+  <div><button type="submit">Save</button></div>
+</form>
+{% endblock %}

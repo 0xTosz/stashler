@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stasher"
+version = "0.1.0"
+description = "Append-only archive of your own Path of Exile 2 trade listings, captured carefully within the API rate limits."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "httpx>=0.27",
+    "websockets>=12.0",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+stasher = "stasher.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stasher*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

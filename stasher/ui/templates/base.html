@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>stasher</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #14161a; color: #d7dbe0; }
+    a { color: #6cb6ff; text-decoration: none; }
+    header { background: #1b1e24; border-bottom: 1px solid #2a2f37; padding: 8px 14px; }
+    .nav { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+    .nav .brand { font-weight: 700; letter-spacing: .5px; }
+    .nav .spacer { flex: 1; }
+    button { font: inherit; background: #2a2f37; color: #d7dbe0; border: 1px solid #3a414b;
+             border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+    button:hover:not(:disabled) { background: #343b45; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; font-size: 13px; }
+    .pill { padding: 2px 8px; border-radius: 10px; background: #2a2f37; }
+    .pill.live { background: #1f4023; color: #9be3a3; }
+    .pill.reconnecting { background: #4a3b16; color: #ffd479; }
+    .pill.backfill { background: #16384a; color: #87cefa; }
+    .buckets { display: flex; gap: 10px; flex-wrap: wrap; }
+    .bucket { min-width: 92px; }
+    .bucket .bar { height: 6px; background: #2a2f37; border-radius: 3px; overflow: hidden; }
+    .bucket .bar > span { display: block; height: 100%; background: #4f9dff; }
+    .bucket.warn .bar > span { background: #ffcc55; }
+    .bucket.bad .bar > span { background: #ff6b6b; }
+    .bucket small { color: #8b929c; }
+    .bucket .bar { position: relative; }
+    .bucket .bar .mark { position: absolute; top: -1px; bottom: -1px; width: 2px;
+                         background: #cfd6df; opacity: .75; }
+    .rate-toggle { display: flex; align-items: center; }
+    .rate-toggle .muted { margin-right: 6px; }
+    .seg { border-radius: 0; padding: 4px 9px; }
+    .seg:first-of-type { border-radius: 5px 0 0 5px; }
+    .seg:last-of-type { border-radius: 0 5px 5px 0; border-left: none; }
+    .seg.active { background: #2f5d8a; border-color: #3f7ab0; color: #eaf3ff; }
+    .feed { max-height: 120px; overflow: auto; min-width: 260px; flex: 1; }
+    .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ok { color: #9be3a3; } .rate_limited { color: #ffd479; } .error { color: #ff8a8a; }
+    main { padding: 14px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #23272e; }
+    th { color: #9aa1ab; font-weight: 600; }
+    input, select { font: inherit; background: #1b1e24; color: #d7dbe0;
+                    border: 1px solid #3a414b; border-radius: 5px; padding: 5px 8px; }
+    .muted { color: #8b929c; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <span class="brand">stasher</span>
+      <a href="{{ url_for('records') }}">Records</a>
+      <a href="{{ url_for('settings') }}">Settings</a>
+      <span class="rate-toggle"
+            title="Restrictive reserves part of the API budget so browsing the trade site in your browser doesn't trip the per-IP limit">
+        <span class="muted">Rate:</span>
+        <button id="rm-full" class="seg">Full</button>
+        <button id="rm-restrictive" class="seg">Restrictive</button>
+      </span>
+      <span class="spacer"></span>
+      <button id="btn-backfill">Backfill</button>
+      <button id="btn-bf-pause">Pause</button>
+      <button id="btn-bf-stop">Stop backfill</button>
+      <span style="width: 10px"></span>
+      <button id="btn-live-start">Start live</button>
+      <button id="btn-live-stop">Stop live</button>
+    </div>
+    <div class="status">
+      <div>
+        <div>Mode: <span id="s-mode" class="pill">…</span></div>
+        <div class="muted"><span id="s-total">0</span> archived ·
+          <span id="s-new">0</span> new this session</div>
+        <div class="muted" id="s-error"></div>
+      </div>
+      <div>
+        <div class="muted">Rate limits</div>
+        <div id="s-buckets" class="buckets"></div>
+      </div>
+      <div class="feed">
+        <div class="muted">Query feed</div>
+        <div id="s-feed"></div>
+      </div>
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    let st = {};
+    async function post(url) { try { await fetch(url, {method: 'POST'}); } catch (e) {} await refresh(); }
+    document.getElementById('btn-backfill').onclick = () => post('/api/backfill');
+    document.getElementById('btn-bf-pause').onclick = () =>
+      post(st.backfill_paused ? '/api/backfill/resume' : '/api/backfill/pause');
+    document.getElementById('btn-bf-stop').onclick = () => post('/api/backfill/stop');
+    document.getElementById('btn-live-start').onclick = () => post('/api/live/start');
+    document.getElementById('btn-live-stop').onclick = () => post('/api/live/stop');
+    document.getElementById('rm-full').onclick = () => post('/api/rate_mode/full');
+    document.getElementById('rm-restrictive').onclick = () => post('/api/rate_mode/restrictive');
+
+    function bucket(b) {
+      const pct = b.max_hits ? Math.min(100, 100 * b.used / b.max_hits) : 0;
+      const effPct = b.max_hits ? Math.min(100, 100 * b.limit_eff / b.max_hits) : 100;
+      const cls = b.restricted ? 'bad' : (b.used >= b.limit_eff ? 'warn' : '');
+      return `<div class="bucket ${cls}">
+        <div>${b.used}/${b.limit_eff}<small> of ${b.max_hits} /${b.period}s</small></div>
+        <div class="bar"><span style="width:${pct}%"></span><i class="mark" style="left:${effPct}%"></i></div>
+        <small>${b.reset_in > 0 ? '~' + Math.ceil(b.reset_in) + 's' : 'clear'}</small>
+      </div>`;
+    }
+
+    async function refresh() {
+      let s;
+      try { s = await (await fetch('/api/status')).json(); } catch (e) { return; }
+      st = s;
+      const mode = document.getElementById('s-mode');
+      mode.textContent = s.mode;
+      mode.className = 'pill ' + (s.backfill_running ? 'backfill'
+        : s.live_connected ? 'live'
+        : s.mode === 'reconnecting' ? 'reconnecting' : '');
+      document.getElementById('s-total').textContent = s.items_total;
+      document.getElementById('s-new').textContent = s.session_new;
+      document.getElementById('s-error').textContent = s.last_error ? ('⚠ ' + s.last_error) : '';
+
+      document.getElementById('btn-backfill').disabled = s.backfill_running;
+      const pause = document.getElementById('btn-bf-pause');
+      pause.disabled = !s.backfill_running;
+      pause.textContent = s.backfill_paused ? 'Resume' : 'Pause';
+      document.getElementById('btn-bf-stop').disabled = !s.backfill_running;
+      document.getElementById('btn-live-start').disabled = s.live_connected;
+      document.getElementById('rm-full').classList.toggle('active', s.rate_mode === 'full');
+      document.getElementById('rm-restrictive').classList.toggle('active', s.rate_mode === 'restrictive');
+
+      let html = '';
+      for (const [policy, buckets] of Object.entries(s.rate_limits || {})) {
+        html += `<div><small class="muted">${policy}</small> ${buckets.map(bucket).join('')}</div>`;
+      }
+      document.getElementById('s-buckets').innerHTML = html;
+
+      document.getElementById('s-feed').innerHTML = (s.recent_queries || []).map(q =>
+        `<div><span class="${q.status}">${q.kind}</span>
+         <span class="muted">${q.target || ''}</span>
+         ${q.http_code || ''} ${q.detail ? '· ' + q.detail : ''}</div>`).join('');
+    }
+    refresh();
+    setInterval(refresh, 1500);
+  </script>
+</body>
+</html>

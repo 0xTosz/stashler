@@ -1,0 +1,40 @@
+# Copy to config.local.toml and fill in. config.local.toml is gitignored.
+# Credentials (account_name, poesessid, league) can also be set later from the UI;
+# the UI writes them into the database, which then overrides values set here.
+
+# Path of Exile account name for the trade "Seller" filter. Include the
+# #discriminator exactly as shown on your profile, e.g. "YourName#1234" -- the
+# search returns nothing without it.
+account_name = ""
+
+# Your POESESSID session cookie value (from pathofexile.com cookies). Secret!
+poesessid = ""
+
+# Trade league to archive (PoE2). The current league name as shown in the trade URL,
+# e.g. "Runes of Aldur" (spaces are fine; they get URL-encoded automatically).
+league = "Runes of Aldur"
+
+# Listing "status" filter. The trade site defaults to "securable" (Instant Buyout);
+# keep "any" so offline and non-buyout listings are archived too.
+status = "any"
+
+# --- usually fine as-is ---
+
+# Realm + base URL. PoE2 is in beta; centralised here in case GGG changes them.
+realm = "poe2"
+base_url = "https://www.pathofexile.com"
+
+# Where the SQLite archive lives.
+db_path = "stasher.db"
+
+# Descriptive User-Agent. GGG asks for app/version + a contact. Put your email.
+contact = "you@example.com"
+
+# Safety margin: leave this many requests of headroom under every rate-limit bucket.
+rate_limit_margin = 1
+
+# Rate-limit mode seed: "full" or "restrictive". Restrictive reserves a fraction of
+# every bucket so browsing the trade site in a browser (same per-IP limit) won't trip
+# it. Toggle live from the UI; this value only seeds the first run.
+rate_mode = "full"
+restrictive_fraction = 0.5
