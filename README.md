@@ -68,6 +68,10 @@ well under the trade API limits — going over them causes a 15–30 minute lock
 
 ## How scoring works
 
+> **Work in progress.** The built-in rules are an early starting point and cover only a
+> handful of cases. Expect to extend them — add your own regex and filter rules in Settings
+> for what matters to you. This is the area most likely to change and grow.
+
 Listing prices aren't reliable, so Stashler scores items **locally** from the archived item
 data (affixes, tiers, roll ranges, base, item level, unique name). If **any** rule matches,
 the item is flagged with the reason. The default rules are tight on purpose — they aim to
