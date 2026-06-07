@@ -88,7 +88,8 @@ class TradeClient:
             raise TradeAPIError("No account_name configured")
         league = quote(creds.league, safe="")
         url = f"{self.config.base_url}/api/trade2/search/{self.config.realm}/{league}"
-        body = _build_query(creds.account, extra_filters, self.config.status, sort)
+        status = self.store.get_setting("status", self.config.status) or self.config.status
+        body = _build_query(creds.account, extra_filters, status, sort)
         data = self._request("search", "POST", url, target, json=body)
         return {
             "id": data.get("id"),

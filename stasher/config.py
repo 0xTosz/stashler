@@ -22,6 +22,18 @@ __version__ = "0.1.2"
 # Uncommon default port for the local UI (avoids the busy 3000/5000/8000/8080 range).
 DEFAULT_UI_PORT = 7137
 
+# Valid values for the trade query's listing-type filter (query.status.option), with
+# UI labels. "online"/"onlineleague" return in-person listings (whisper-to-buy);
+# "securable" is the instant-buyout/merchant-tab subset; "any" is everything (the two
+# combined, plus offline). Confirmed against the live trade2 API.
+TRADE_STATUS_OPTIONS: list[tuple[str, str]] = [
+    ("online", "In-person — online only"),
+    ("onlineleague", "In-person — online, this league only"),
+    ("any", "Any — in-person + instant-buyout, incl. offline"),
+    ("securable", "Instant buyout only (merchant tabs)"),
+]
+TRADE_STATUS_VALUES = frozenset(v for v, _ in TRADE_STATUS_OPTIONS)
+
 
 def user_data_dir() -> Path:
     """Per-user, writable directory for the DB, rules, and filter -- so a packaged app
@@ -42,9 +54,10 @@ class Config:
     poesessid: str = ""
     league: str = "Runes of Aldur"  # current PoE2 league
 
-    # Listing "status" filter. The trade site defaults to "securable" (Instant Buyout);
-    # we want "any" so offline / non-buyout listings are captured too.
-    status: str = "any"
+    # Listing "status" filter (see TRADE_STATUS_OPTIONS). Default "online" = in-person
+    # listings only (whisper-to-buy), excluding "securable" instant-buyout/merchant tabs.
+    # Overridable per-install via the Settings dropdown (stored in the settings table).
+    status: str = "online"
 
     # Endpoint / environment.
     realm: str = "poe2"

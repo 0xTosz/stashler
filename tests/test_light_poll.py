@@ -34,6 +34,36 @@ def test_build_query_sort_override():
     assert _build_query("Me#1", None, "any")["sort"] == {"price": "asc"}  # default
 
 
+def test_build_query_sets_status_option():
+    q = _build_query("Me#1", None, "online")
+    assert q["query"]["status"] == {"option": "online"}
+
+
+def test_search_uses_stored_status_then_config_default(tmp_path, monkeypatch):
+    from stasher.client import TradeClient
+    from stasher.config import Config
+
+    store = Store(str(tmp_path / "t.db"))
+    store.set_setting("account_name", "Me#1")
+    client = TradeClient(Config(), store, limiter=None)  # limiter unused (we stub _request)
+    captured = {}
+
+    def fake_request(policy, method, url, target, json=None):
+        captured["body"] = json
+        return {"id": "x", "result": [], "total": 0}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    # No stored setting -> config default ("online", in-person).
+    client.search()
+    assert captured["body"]["query"]["status"]["option"] == "online"
+
+    # Stored setting wins.
+    store.set_setting("status", "securable")
+    client.search()
+    assert captured["body"]["query"]["status"]["option"] == "securable"
+
+
 class _FakePipeline:
     def __init__(self):
         self.calls = []

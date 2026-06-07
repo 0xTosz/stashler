@@ -23,6 +23,16 @@
     </span>
     <small class="muted">Fetched from the trade site (cached). Click ↻ to refresh.</small>
   </label>
+  <label>Listing type
+    <select name="status" style="width:100%">
+      {% for value, text in status_options %}
+        <option value="{{ value }}" {{ 'selected' if value == status else '' }}>{{ text }}</option>
+      {% endfor %}
+    </select>
+    <small class="muted">Which of your listings to capture. <strong>In-person</strong> = public
+      tabs (whisper to buy); <strong>instant buyout</strong> = merchant tabs. Default captures
+      in-person online only.</small>
+  </label>
   <label>POESESSID
     <input type="password" name="poesessid"
            placeholder="{{ '•••••• (set — leave blank to keep)' if has_poesessid else 'paste cookie value' }}"

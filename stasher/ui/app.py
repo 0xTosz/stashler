@@ -10,6 +10,7 @@ import time
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
+from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
 from ..evaluate.itemdata import stash_regex
 from .itemcard import build_card
 
@@ -174,6 +175,8 @@ def create_app(stasher) -> Flask:
             league=store.get_setting("league", stasher.config.league) or "",
             leagues=leagues_cached(),  # instant; the page refreshes it via /api/leagues
             has_poesessid=bool(store.get_setting("poesessid", "")),
+            status=store.get_setting("status", stasher.config.status) or stasher.config.status,
+            status_options=TRADE_STATUS_OPTIONS,
             saved=request.args.get("saved"),
             items_total=store.count_items(),
             rules_path=str(evaluator.edit_path()),
@@ -191,6 +194,9 @@ def create_app(stasher) -> Flask:
         if request.method == "POST":
             for key in ("account_name", "league"):
                 store.set_setting(key, request.form.get(key, "").strip())
+            status = request.form.get("status", "").strip()
+            if status in TRADE_STATUS_VALUES:  # ignore anything not a known option
+                store.set_setting("status", status)
             poesessid = request.form.get("poesessid", "").strip()
             if poesessid:  # don't wipe an existing session on an empty submit
                 store.set_setting("poesessid", poesessid)
