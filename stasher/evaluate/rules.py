@@ -24,6 +24,7 @@ from .checks.base import Checker
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _DEFAULT_RULES = _PACKAGE_DIR / "default_rules.toml"
+_DEFAULT_FILTER = _PACKAGE_DIR / "default.filter"
 
 # A single app-managed loot-filter file lives next to the rules file. rules.toml only
 # carries `[item_filter] enabled = true/false`; the file's contents are edited/uploaded
@@ -50,6 +51,24 @@ def resolve_rules_path(
             if (d / name).exists():
                 return d / name
     return (Path(data_dir) / "rules.toml") if data_dir else Path("rules.toml")
+
+
+def seed_user_rules(
+    path: str | os.PathLike[str] | None = None,
+    data_dir: str | os.PathLike[str] | None = None,
+) -> None:
+    """On first run, copy the packaged starter rules + example filter to the writable
+    location so a fresh install (especially the packaged exe, whose data dir starts
+    empty) ships with working example rules and an item filter. No-op if a rules file
+    already exists there (e.g. the dev cwd, or a prior run)."""
+    target = resolve_rules_path(path, data_dir)
+    if target.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_DEFAULT_RULES.read_text(encoding="utf-8"), encoding="utf-8")
+    dest_filter = filter_path(target.parent)
+    if not dest_filter.exists() and _DEFAULT_FILTER.exists():
+        dest_filter.write_text(_DEFAULT_FILTER.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def parse_rules_text(text: str) -> dict:

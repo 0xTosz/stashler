@@ -237,6 +237,21 @@ def test_save_rules_validates_and_reloads(tmp_path):
     assert evaluate_item(item, ev.checkers).flagged
 
 
+def test_seed_user_rules_creates_starter_rules_and_filter(tmp_path):
+    from stasher.evaluate.rules import seed_user_rules
+
+    target = tmp_path / "rules.toml"
+    seed_user_rules(path=str(target), data_dir=str(tmp_path))
+    assert target.exists()                       # starter rules copied
+    assert (tmp_path / "stasher.filter").exists()  # example filter copied
+    assert "item_filter" in target.read_text(encoding="utf-8")
+
+    # Idempotent: a second run must not clobber edits.
+    target.write_text("[[regex]]\nname = 'mine'\npattern = 'x'\n", encoding="utf-8")
+    seed_user_rules(path=str(target), data_dir=str(tmp_path))
+    assert "mine" in target.read_text(encoding="utf-8")
+
+
 def test_save_rules_rejects_bad_pattern_without_writing(tmp_path):
     import pytest
 

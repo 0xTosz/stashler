@@ -28,7 +28,7 @@ stasher = "stasher.cli:main"
 include = ["stasher*"]
 
 [tool.setuptools.package-data]
-"stasher.evaluate" = ["*.toml"]
+"stasher.evaluate" = ["*.toml", "*.filter"]
 "stasher.ui" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]

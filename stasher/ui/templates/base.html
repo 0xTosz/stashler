@@ -121,6 +121,7 @@
       <a class="navlink" href="{{ url_for('queue') }}">Queue <span id="s-queue" class="pill" style="display:none">0</span></a>
       <a class="navlink" href="{{ url_for('log') }}">Log</a>
       <a class="navlink" href="{{ url_for('settings') }}">Settings</a>
+      <button id="btn-auto" title="Keep the archive current: the app polls for new listings and runs periodic full backfills automatically">Auto-refresh: off</button>
       <span class="rate-toggle"
             title="Restrictive reserves part of the API budget so browsing the trade site in your browser doesn't trip the per-IP limit">
         <span class="muted">Rate:</span>
@@ -128,7 +129,6 @@
         <button id="rm-restrictive" class="seg">Restrictive</button>
       </span>
       <span class="spacer"></span>
-      <button id="btn-auto" title="Keep the archive current: the app polls for new listings and runs periodic full backfills automatically">Auto-refresh: off</button>
     </div>
     <div class="status">
       <div>

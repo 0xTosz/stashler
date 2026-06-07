@@ -11,6 +11,7 @@ datas = [
     ("stasher/ui/templates", "stasher/ui/templates"),
     ("stasher/ui/static", "stasher/ui/static"),
     ("stasher/evaluate/default_rules.toml", "stasher/evaluate"),
+    ("stasher/evaluate/default.filter", "stasher/evaluate"),
 ]
 
 a = Analysis(

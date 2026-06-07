@@ -1,0 +1,15 @@
+# Example item-filter for Stashler's evaluator (edit in Settings, or upload a replacement).
+# Supported: Show/Hide blocks with BaseType, Class, Rarity, ItemLevel, Quality, Sockets.
+# First matching block wins; a matching Show flags the item, a matching Hide suppresses.
+#
+# Goal here: surface only very high item-level *magic* bases -- clean canvases worth
+# exalting/crafting on. Tighten the ItemLevel or add BaseType lines to narrow further.
+
+# Ignore anything below top-tier item level outright.
+Hide
+    ItemLevel < 84
+
+# A top-ilvl magic base has open affixes and the best tiers available -- a craft canvas.
+Show  # clean high-ilvl magic base
+    Rarity Magic
+    ItemLevel >= 84

@@ -28,6 +28,6 @@ min_percent = 88
 aggregate = "avg"
 
 # --- item_filter: a single app-managed loot-filter file, edited in the UI Settings ---
-# Off by default; turn on after adding filter content in Settings (or uploading a file).
+# On by default with the example filter (seeded on first run); edit it in Settings.
 [item_filter]
-enabled = false
+enabled = true

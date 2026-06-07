@@ -6,6 +6,7 @@ import json
 import math
 import os
 import sys
+import time
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
@@ -35,6 +36,27 @@ def create_app(stasher) -> Flask:
     # Resume the auto-refresh loop if it was on last session.
     if store.get_setting("auto_mode", "off") == "on":
         worker.start_auto()
+
+    _LEAGUES_TTL = 12 * 3600
+
+    def leagues_cached() -> list[str]:
+        raw = store.get_meta("leagues_cache")
+        try:
+            return json.loads(raw) if raw else []
+        except (ValueError, TypeError):
+            return []
+
+    def leagues_fetch(force: bool = False) -> list[str]:
+        cached = leagues_cached()
+        ts = float(store.get_meta("leagues_cached_at") or 0)
+        if cached and not force and (time.time() - ts) < _LEAGUES_TTL:
+            return cached
+        fresh = stasher.client.fetch_leagues()
+        if fresh:
+            store.set_meta("leagues_cache", json.dumps(fresh))
+            store.set_meta("leagues_cached_at", str(time.time()))
+            return fresh
+        return cached  # stale/empty fallback when the trade site is unreachable
 
     @app.route("/")
     def records():
@@ -135,6 +157,7 @@ def create_app(stasher) -> Flask:
         ctx = dict(
             account_name=store.get_setting("account_name", "") or "",
             league=store.get_setting("league", stasher.config.league) or "",
+            leagues=leagues_cached(),  # instant; the page refreshes it via /api/leagues
             has_poesessid=bool(store.get_setting("poesessid", "")),
             saved=request.args.get("saved"),
             items_total=store.count_items(),
@@ -191,6 +214,10 @@ def create_app(stasher) -> Flask:
                 tail += f"  | {r['detail']}"
             lines.append(head + tail)
         return render_template("log.html", text="\n".join(lines), count=len(rows))
+
+    @app.route("/api/leagues")
+    def api_leagues():
+        return jsonify(leagues_fetch(force=request.args.get("refresh") == "1"))
 
     @app.route("/api/status")
     def api_status():

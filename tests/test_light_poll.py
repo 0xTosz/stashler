@@ -1,8 +1,21 @@
 """Tests for the newest-first search sort and the light-poll refresh."""
 
 from stasher.backfill import NEWEST_SORT, poll_indicates_overflow, run_light_poll
-from stasher.client import TradeAPIError, _build_query
+from stasher.client import TradeAPIError, _build_query, parse_leagues
 from stasher.store import Store
+
+
+def test_parse_leagues_filters_realm_and_dedups():
+    data = {"result": [
+        {"id": "Standard", "realm": "poe2", "text": "Standard"},
+        {"id": "Rise of the Abyssal", "realm": "poe2"},
+        {"id": "PoE1League", "realm": "poe1"},     # wrong realm -> dropped
+        {"text": "TextOnly"},                       # no id -> use text, no realm -> kept
+        {"id": "Standard"},                          # duplicate -> dropped
+    ]}
+    assert parse_leagues(data, "poe2") == ["Standard", "Rise of the Abyssal", "TextOnly"]
+    assert parse_leagues({}, "poe2") == []
+    assert parse_leagues({"result": None}) == []
 
 
 def test_poll_overflow_detection():

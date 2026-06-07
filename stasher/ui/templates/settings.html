@@ -10,7 +10,18 @@
       #discriminator, e.g. <code>YourName#1234</code> — the search needs it.</small>
   </label>
   <label>League
-    <input type="text" name="league" value="{{ league }}" style="width:100%">
+    <span style="display:flex; gap:6px;">
+      <select id="league" name="league" style="flex:1; width:100%">
+        {% if league and league not in leagues %}
+          <option value="{{ league }}" selected>{{ league }}</option>
+        {% endif %}
+        {% for lg in leagues %}
+          <option value="{{ lg }}" {{ 'selected' if lg == league else '' }}>{{ lg }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" id="league-refresh" title="Fetch the current leagues from the trade site">↻</button>
+    </span>
+    <small class="muted">Fetched from the trade site (cached). Click ↻ to refresh.</small>
   </label>
   <label>POESESSID
     <input type="password" name="poesessid"
@@ -104,5 +115,30 @@
     reader.onload = () => { document.getElementById('filter-text').value = reader.result; };
     reader.readAsText(f);
   };
+
+  // Populate the League dropdown from the trade site (cached server-side; ↻ forces a
+  // refresh). Keeps the current selection even if it's not in the fetched list.
+  async function loadLeagues(force) {
+    const sel = document.getElementById('league');
+    const btn = document.getElementById('league-refresh');
+    const current = sel.value;
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/leagues' + (force ? '?refresh=1' : ''));
+      const leagues = await res.json();
+      if (Array.isArray(leagues) && leagues.length) {
+        const list = (current && !leagues.includes(current)) ? [current, ...leagues] : leagues;
+        sel.innerHTML = '';
+        for (const l of list) {
+          const o = document.createElement('option');
+          o.value = l; o.textContent = l; o.selected = (l === current);
+          sel.appendChild(o);
+        }
+      }
+    } catch (e) { /* keep server-rendered options */ }
+    btn.disabled = false;
+  }
+  document.getElementById('league-refresh').onclick = () => loadLeagues(true);
+  loadLeagues(false);
 </script>
 {% endblock %}

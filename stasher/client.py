@@ -96,6 +96,20 @@ class TradeClient:
             "total": data.get("total", 0),
         }
 
+    def fetch_leagues(self) -> list[str]:
+        """League ids from the trade ``data/leagues`` endpoint (for the Settings picklist).
+
+        Bypasses the search/fetch rate limiters (it's a cheap static data endpoint, like
+        ``data/filters``) and returns ``[]`` on any failure so the UI can fall back."""
+        url = f"{self.config.base_url}/api/trade2/data/leagues"
+        try:
+            resp = self._http.get(url, headers=self._headers(), timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            return []
+        return parse_leagues(data, self.config.realm)
+
     def fetch_batch(self, hashes: list[str], query_id: str) -> list[dict]:
         """Fetch details for up to FETCH_BATCH item hashes from a given query."""
         if not hashes:
@@ -148,6 +162,21 @@ class TradeClient:
             f"{policy} failed after {MAX_ATTEMPTS} attempts"
             + (f": {last_exc}" if last_exc else " (rate limited)")
         )
+
+
+def parse_leagues(data: dict, realm: str | None = None) -> list[str]:
+    """Extract ordered, de-duplicated league ids from a ``data/leagues`` response."""
+    out: list[str] = []
+    for item in (data.get("result") if isinstance(data, dict) else None) or []:
+        if not isinstance(item, dict):
+            continue
+        item_realm = item.get("realm")
+        if realm and item_realm and item_realm != realm:
+            continue
+        lid = item.get("id") or item.get("text")
+        if lid and lid not in out:
+            out.append(lid)
+    return out
 
 
 def _build_query(
