@@ -278,6 +278,34 @@ def test_save_rules_validates_and_reloads(tmp_path):
     assert evaluate_item(item, ev.checkers).flagged
 
 
+def test_save_rules_handles_crlf_without_corrupting_file(tmp_path):
+    # Browsers submit textareas as CRLF; the file must save+reload cleanly and not
+    # accumulate \r\r\n on disk (the cause of "invalid character '\r'" on Windows).
+    rules = tmp_path / "rules.toml"
+    rules.write_text(_TEST_RULES, encoding="utf-8")
+    store = Store(str(tmp_path / "t.db"))
+    ev = Evaluator(store, rules_path=str(rules))
+
+    crlf_rules = "[[regex]]\r\nname = \"MS\"\r\npattern = \"x\"\r\ntargets = [\"affixes\"]\r\n"
+    crlf_filter = "Show\r\n    Rarity Magic\r\n    ItemLevel >= 84\r\n"
+    ev.save_rules(crlf_rules, crlf_filter)  # must not raise
+
+    raw = rules.read_bytes()
+    assert b"\r" not in raw  # normalized to LF on disk
+    assert b"\r" not in (tmp_path / "stasher.filter").read_bytes()
+    # A second save (re-submitting the now-saved text as CRLF again) still works.
+    ev.save_rules(crlf_rules, crlf_filter)
+    assert b"\r" not in rules.read_bytes()
+
+
+def test_parse_rules_text_tolerates_doubled_cr():
+    from stasher.evaluate.rules import parse_rules_text
+    # A file already corrupted with \r\r\n must still parse (self-heal on next save).
+    assert parse_rules_text("# c\r\r\n[item_filter]\r\r\nenabled = true\r\r\n") == {
+        "item_filter": {"enabled": True}
+    }
+
+
 def test_seed_user_rules_creates_starter_rules_and_filter(tmp_path):
     from stasher.evaluate.rules import seed_user_rules
 

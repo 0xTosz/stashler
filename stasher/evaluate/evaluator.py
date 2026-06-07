@@ -19,6 +19,7 @@ from .rules import (
     filter_path,
     item_filter_enabled,
     load_checkers,
+    normalize_newlines,
     parse_rules_text,
     resolve_rules_path,
 )
@@ -65,6 +66,8 @@ class Evaluator:
         written (so edits persist); whether they apply is governed by ``[item_filter]
         enabled`` in the rules file.
         """
+        rules_text = normalize_newlines(rules_text)
+        filter_text = normalize_newlines(filter_text)
         data = parse_rules_text(rules_text)
         base = self.edit_path().parent
         # Validate the disk-independent checkers (regex, unique_roll) up front, before
@@ -72,10 +75,12 @@ class Evaluator:
         build_checkers({k: v for k, v in data.items() if k != "item_filter"}, base)
 
         base.mkdir(parents=True, exist_ok=True)
-        filter_path(base).write_text(filter_text, encoding="utf-8")
+        # newline="" keeps the normalized LF as-is; without it, Windows text mode would
+        # re-expand each \n to \r\n (and double an existing CR to \r\r\n).
+        filter_path(base).write_text(filter_text, encoding="utf-8", newline="")
 
         target = self.edit_path()
-        target.write_text(rules_text, encoding="utf-8")
+        target.write_text(rules_text, encoding="utf-8", newline="")
         self.reload()  # full rebuild (incl. item_filter); surfaces any remaining error
 
     def evaluate_entry(self, entry: dict) -> Evaluation:

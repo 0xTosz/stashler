@@ -65,16 +65,30 @@ def seed_user_rules(
     if target.exists():
         return
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_DEFAULT_RULES.read_text(encoding="utf-8"), encoding="utf-8")
+    # newline="" so Windows text mode doesn't rewrite LF as CRLF on disk.
+    target.write_text(
+        normalize_newlines(_DEFAULT_RULES.read_text(encoding="utf-8")),
+        encoding="utf-8", newline="",
+    )
     dest_filter = filter_path(target.parent)
     if not dest_filter.exists() and _DEFAULT_FILTER.exists():
-        dest_filter.write_text(_DEFAULT_FILTER.read_text(encoding="utf-8"), encoding="utf-8")
+        dest_filter.write_text(
+            normalize_newlines(_DEFAULT_FILTER.read_text(encoding="utf-8")),
+            encoding="utf-8", newline="",
+        )
+
+
+def normalize_newlines(text: str) -> str:
+    """Collapse CRLF/CR to LF. Browsers submit textareas as CRLF and Windows text-mode
+    writes can double a CR to ``\\r\\r\\n``; tomllib rejects any bare ``\\r``, so we
+    normalize before parsing (and before writing) to keep files cross-platform clean."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def parse_rules_text(text: str) -> dict:
     """Parse rules TOML, raising ValueError with a friendly message on syntax errors."""
     try:
-        return tomllib.loads(text)
+        return tomllib.loads(normalize_newlines(text))
     except tomllib.TOMLDecodeError as exc:
         raise ValueError(f"TOML syntax error: {exc}") from exc
 
