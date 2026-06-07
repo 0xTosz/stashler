@@ -1,0 +1,108 @@
+# Stashler item-filter -- "Identified gear, best bases only"
+# ---------------------------------------------------------------------------
+# Extracted from NeverSink's NeverSink-Filter-for-PoE2, strictness 4 (VERY STRICT),
+# version 0.10.1a.2026.158.5. See FilterBlade/ for the source filters.
+#
+# Premise: every item Stashler archives is one you already LISTED, so it is
+# already identified. Listing prices are noise, so we score locally on what we
+# can actually see: the base. A rare's ceiling is set by its base (which affixes
+# and how-high they can roll, what the build community actually buys), so this
+# filter surfaces only rares sitting on the best bases per class.
+#
+# Source mapping (Very Strict keeps exactly these tiers, drops T3-T5):
+#   [1300] Rare Jewellery  -> t1 (best) + t2
+#   [1400] Rare Gear       -> t1_top (best) + t2_top
+# Very Strict gates the top tiers at ItemLevel >= 82; we keep that gate so only
+# endgame-relevant bases flag. Lower it to 65 to also catch levelling-tier hits.
+#
+# Stashler supports: BaseType, Class, Rarity, ItemLevel, Quality, Sockets,
+# HasExplicitMod, Corrupted, Mirrored, Identified (first matching block wins; a
+# matching Show flags the item). This filter selects on the BASE (below) and on
+# named high-value AFFIXES (the IDENTIFIED MODS section); finer roll-quality
+# grading is still the job of the [[regex]] rules in rules.toml.
+# ---------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------
+# Identified high-value affixes, per class (source [0400] IDENTIFIED MODS)
+# HasExplicitMod matches the affix *name* (e.g. "Hellion's"), so these fire on
+# any base carrying one of the build-defining mods -- the strongest "already
+# identified" signal in the whole filter. Listed first so they win over the
+# base-only rules below.
+#---------------------------------------------------------------------------
+
+Show  # boots: movement-speed tier mod
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Boots"
+    HasExplicitMod >=1 "Hellion's"
+
+Show  # amulets: top spirit / projectile mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Amulets"
+    HasExplicitMod >=1 "Countess'" "of the Sharpshooter"
+
+Show  # caster weapons: top spell / ailment mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Staves" "Wands"
+    HasExplicitMod >=1 "Runic" "of the Wizard" "of Inferno" "of Frostbite" "of Thunder" "of Armageddon" "of Grief"
+
+Show  # sceptres: top minion / buff mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Sceptres"
+    HasExplicitMod >=1 "King's" "of the Slavedriver" "Empowering"
+
+Show  # bows / crossbows: top attack mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Bows" "Crossbows"
+    HasExplicitMod >=1 "of Many" "Merciless" "of the Sniper"
+
+Show  # spears: top attack mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Spears"
+    HasExplicitMod >=1 "Merciless" "Flaring" "Amazon's" "of the Sniper"
+
+Show  # quarterstaves / talismans / 2H maces: top attack mods
+    Corrupted False
+    Identified True
+    Rarity Normal Magic Rare
+    Class == "Quarterstaves" "Talismans" "Two Hand Maces"
+    HasExplicitMod >=1 "Merciless" "of War"
+
+#---------------------------------------------------------------------------
+# Rare Jewellery -- rings, amulets, belts (source [1300])
+#---------------------------------------------------------------------------
+
+Show  # best jewellery bases (T1) -- top implicits / most wanted
+    Rarity Rare
+    ItemLevel >= 82
+    BaseType == "Amethyst Ring" "Breach Ring" "Prismatic Ring" "Solar Amulet"
+
+Show  # strong jewellery bases (T2)
+    Rarity Rare
+    ItemLevel >= 82
+    BaseType == "Amber Amulet" "Azure Amulet" "Bloodstone Amulet" "Gold Amulet" "Gold Ring" "Jade Amulet" "Lapis Amulet" "Lunar Amulet" "Pearl Ring" "Plate Belt" "Ruby Ring" "Sapphire Ring" "Stellar Amulet" "Topaz Ring" "Unset Ring" "Utility Belt"
+
+#---------------------------------------------------------------------------
+# Rare Gear -- weapons + armour, best bases per class (source [1400])
+#---------------------------------------------------------------------------
+
+Show  # best gear bases (T1 top) -- highest base values, build staples
+    Rarity Rare
+    ItemLevel >= 82
+    BaseType == "Adherent Cuffs" "Akoyan Spear" "Alpha Talisman" "Ancestral Tiara" "Blacksteel Crest Shield" "Blacksteel Gauntlets" "Blacksteel Sabatons" "Bolting Quarterstaff" "Chiming Staff" "Conjurer Mantle" "Corsair Coat" "Cryptic Crown" "Cryptic Leggings" "Daggerfoot Shoes" "Dastard Armour" "Death Mail" "Desert Buckler" "Desolate Crossbow" "Drakeskin Boots" "Dueling Wand" "Falconer's Jacket" "Fanatic Greathammer" "Flying Spear" "Freebooter Cap" "Galvanic Wand" "Gemini Bow" "Gladiatorial Helm" "Golden Targe" "Grinning Mask" "Imperial Greathelm" "Jade Talisman" "Maji Talisman" "Marauding Mace" "Massive Greathammer" "Massive Mitts" "Obliterator Bow" "Omen Sceptre" "Paralysing Staff" "Polished Bracers" "Primed Quiver" "Rattling Sceptre" "Razor Quarterstaff" "Secured Wraps" "Sekhema Sandals" "Siege Crossbow" "Sinister Quarterstaff" "Sirenscale Gloves" "Skullcrusher Quarterstaff" "Sleek Jacket" "Slipstrike Vest" "Soldier Cuirass" "Tasalian Focus" "Tasalian Greaves" "Tawhoan Tower Shield" "Trarthan Cannon" "Vile Robe" "Warlord Cuirass" "Warmonger Bow" "Withered Wand" "Wolfskin Mantle"
+
+Show  # strong gear bases (T2 top)
+    Rarity Rare
+    ItemLevel >= 82
+    BaseType == "Acrid Wand" "Aegis Quarterstaff" "Akoyan Club" "Ancient Buckler" "Ancient Cuffs" "Apostle Leggings" "Ashbark Talisman" "Attuned Wand" "Austere Garb" "Barbed Bracers" "Baroque Targe" "Cavalry Boots" "Champion Helm" "Charmed Shoes" "Cinched Boots" "Commander Gauntlets" "Cryptic Helm" "Cultist Gauntlets" "Death Mantle" "Desert Cap" "Divine Crown" "Dragonscale Boots" "Dreaming Quarterstaff" "Elegant Crossbow" "Elegant Wraps" "Fanatic Bow" "Fang Talisman" "Faridun Mask" "Feathered Raiment" "Flexed Crossbow" "Flowing Raiment" "Fortified Hammer" "Fortress Sabatons" "Fortress Tower Shield" "Fungal Talisman" "Gemini Crossbow" "Gleaming Cuffs" "Grand Bracers" "Grand Spear" "Guardian Bow" "Guardian Spear" "Kamasan Tiara" "Leyline Focus" "Luxurious Slippers" "Masked Greathelm" "Noble Sabatons" "Opulent Gloves" "Ornate Greaves" "Ornate Mitts" "Ornate Plate" "Paragon Greathelm" "Penetrating Quiver" "Quickslip Shoes" "Rambler Jacket" "Reaping Staff" "Roaring Staff" "Ruination Maul" "Sacramental Robe" "Sacred Focus" "Saintly Crown" "Sanctified Staff" "Sandsworn Sandals" "Seastorm Mantle" "Shrouded Mail" "Siphoning Wand" "Soaring Mask" "Soaring Spear" "Soaring Targe" "Sorcerous Tiara" "Spiked Spear" "Stalking Bracers" "Stalking Spear" "Stoic Sceptre" "Strife Pick" "Striking Quarterstaff" "Swiftstalker Coat" "Tawhoan Greatclub" "Thane Mail" "Thunder Talisman" "Trapper Hood" "Utzaal Cuirass" "Vaal Crest Shield" "Vaal Gloves" "Vaal Greaves" "Vaal Mitts" "Vaal Tower Shield" "Vaal Wraps" "Visceral Quiver" "Volant Quiver" "Voltaic Staff" "Warlock Leggings" "Woven Cap" "Wrath Sceptre" "Wyrmscale Coat"

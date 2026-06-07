@@ -154,6 +154,47 @@ def test_item_filter_rarity_ordinal(tmp_path):
     assert checker.check(rare_crossbow()) == []  # Rare > Magic
 
 
+def test_item_filter_sockets(tmp_path):
+    path = _write_filter(tmp_path, "Show\n    Sockets >= 2\n")
+    checker = flt.build_from_file(path)
+    two = dict(rare_crossbow(), sockets=[{"type": "rune"}, {"type": "rune"}])
+    one = dict(rare_crossbow(), sockets=[{"type": "rune"}])
+    assert checker.check(two) != []
+    assert checker.check(one) == []  # only one socket
+    assert checker.check(rare_crossbow()) == []  # no sockets field -> 0
+
+
+def test_item_filter_state_flags(tmp_path):
+    path = _write_filter(tmp_path, "Show\n    Corrupted True\n    Mirrored False\n")
+    checker = flt.build_from_file(path)
+    corrupt = dict(rare_crossbow(), corrupted=True)
+    assert checker.check(corrupt) != []
+    assert checker.check(rare_crossbow()) == []  # not corrupted
+    assert checker.check(dict(corrupt, duplicated=True)) == []  # mirrored excluded
+
+
+def test_item_filter_has_explicit_mod_by_name(tmp_path):
+    # Affix names live in extended.mods.explicit[].name (never in rendered text).
+    item = dict(rare_crossbow(), extended={"mods": {"explicit": [
+        {"name": "Hellion's"}, {"name": "of the Sharpshooter"},
+    ]}})
+    path = _write_filter(tmp_path, 'Show\n    HasExplicitMod >=1 "Hellion\'s" "Countess\'"\n')
+    assert flt.build_from_file(path).check(item) != []
+    miss = _write_filter(tmp_path, 'Show\n    HasExplicitMod >=1 "Countess\'"\n')
+    assert flt.build_from_file(miss).check(item) == []
+    # Count gate: needs two matching mods.
+    two = _write_filter(tmp_path, 'Show\n    HasExplicitMod >=2 "Hellion\'s" "of the Sharpshooter"\n')
+    assert flt.build_from_file(two).check(item) != []
+    three = _write_filter(tmp_path, 'Show\n    HasExplicitMod >=3 "Hellion\'s" "of the Sharpshooter"\n')
+    assert flt.build_from_file(three).check(item) == []
+
+
+def test_item_filter_has_explicit_mod_by_text(tmp_path):
+    # Falls back to rendered stat text when matching a fragment, not an affix name.
+    path = _write_filter(tmp_path, 'Show\n    HasExplicitMod "increased Physical Damage"\n')
+    assert flt.build_from_file(path).check(rare_crossbow()) != []
+
+
 # --- engine + persistence (with a self-contained rules file) ------------
 
 _TEST_RULES = (

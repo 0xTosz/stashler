@@ -72,6 +72,38 @@ def numbers(text: str) -> list[float]:
     return [float(m) for m in _NUMBER_RE.findall(text)]
 
 
+def is_corrupted(item: dict) -> bool:
+    return bool(item.get("corrupted"))
+
+
+def is_mirrored(item: dict) -> bool:
+    """GGG marks mirrored copies with ``duplicated``."""
+    return bool(item.get("duplicated"))
+
+
+def is_identified(item: dict) -> bool:
+    """Identified state; absent is treated as identified (Stashler's items are listed)."""
+    return bool(item.get("identified", True))
+
+
+def socket_count(item: dict) -> int:
+    """Number of socket slots (PoE2 rune sockets), 0 if none."""
+    socks = item.get("sockets")
+    return len(socks) if isinstance(socks, list) else 0
+
+
+def explicit_mod_names(item: dict) -> list[str]:
+    """Affix names behind the explicit mods (e.g. ``Hellion's``, ``of the Sharpshooter``).
+
+    These come from ``extended.mods.explicit[].name`` -- the prefix/suffix names that
+    FilterBlade's ``HasExplicitMod`` keys off, which never appear in the rendered stat
+    text. Empty when the listing carries no ``extended`` mod data.
+    """
+    ext = item.get("extended") or {}
+    mods = (ext.get("mods") or {}).get("explicit") or []
+    return [n for m in mods if (n := (m or {}).get("name"))]
+
+
 def quality(item: dict) -> int:
     """Quality percent from the properties block, 0 if absent."""
     for prop in item.get("properties") or []:
