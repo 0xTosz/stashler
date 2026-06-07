@@ -38,6 +38,7 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+  const SETUP_OK = {{ 'true' if setup_ok else 'false' }};
   let ALL = [], view = [], sortKey = 'fetched', sortDir = -1, page = 1;
   const PAGE = 100;
   const cardCache = {};
@@ -85,12 +86,16 @@
     const body = $('rec-body');
     body.innerHTML = '';
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="8" class="muted">No items. Turn on Auto-refresh, '
-        + 'or run a backfill, to populate the archive.</td></tr>';
+      const msg = ALL.length
+        ? 'No items match the current filter.'
+        : (SETUP_OK
+            ? 'No items yet. Turn on Auto-refresh (top bar) to populate the archive.'
+            : 'No items yet. Set your account in <a href="/settings">Settings</a> to begin.');
+      body.innerHTML = '<tr><td colspan="8" class="muted">' + msg + '</td></tr>';
     }
-    for (const r of rows) {
+    rows.forEach((r, i) => {
       const tr = document.createElement('tr');
-      tr.className = 'row'; tr.dataset.hash = r.hash;
+      tr.className = 'row' + (i % 2 ? ' alt' : ''); tr.dataset.hash = r.hash;
       const why = r.reasons.length
         ? esc(r.reasons[0]) + (r.reasons.length > 1 ? ' <span class="muted">+' + (r.reasons.length - 1) + '</span>' : '')
         : '<span class="muted">—</span>';
@@ -102,10 +107,11 @@
         '<td class="flag">' + (r.flagged ? '<span class="pill flagged">✓</span>' : '') + '</td>' +
         '<td class="flag">' + (r.reasons.length ? '<span class="pill flagged">' + r.reasons.length + '</span>' : '<span class="muted">0</span>') + '</td>' +
         '<td>' + why + '</td>' +
-        '<td class="muted">' + esc(r.fetched) + '</td>';
+        '<td class="muted"><span class="ts" data-ts="' + esc(r.fetched) + '"></span></td>';
       tr.onclick = () => toggle(tr, r.hash);
       body.appendChild(tr);
-    }
+    });
+    if (window.formatTimes) formatTimes(body);
     $('rec-count').textContent = total + ' item' + (total === 1 ? '' : 's')
       + (total !== ALL.length ? ' (of ' + ALL.length + ')' : '');
     $('rec-page').textContent = 'Page ' + page + ' / ' + pages;

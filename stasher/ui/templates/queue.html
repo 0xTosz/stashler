@@ -33,7 +33,7 @@
         {% if it["price_amount"] %}<span class="val">{{ it["price_amount"] }} {{ it["price_currency"] }}</span>
         {% else %}<span class="muted">—</span>{% endif %}
       </div>
-      {% if it["listed_at"] %}<div class="muted">listed {{ it["listed_at"] }}</div>{% endif %}
+      {% if it["listed_at"] %}<div class="muted">listed <span class="ts" data-ts="{{ it['listed_at'] }}"></span></div>{% endif %}
       {% if it["whisper"] %}<div class="whisper muted" title="{{ it['whisper'] }}">{{ it["whisper"] }}</div>{% endif %}
     </div>
     {% if it["seen"] %}<span class="muted seen-tag">seen</span>
@@ -41,8 +41,13 @@
   </div>
 </div>
 {% else %}
-<p class="muted">Queue is empty. New captures that match an evaluation rule appear here —
-  edit <code>rules.toml</code> and run <code>stasher evaluate</code> to (re)score archived items.</p>
+{% if not setup_ok %}
+<p class="muted">Set your account in <a href="{{ url_for('settings') }}">Settings</a> to begin,
+  then turn on Auto-refresh.</p>
+{% else %}
+<p class="muted">Queue is empty. Items that match an evaluation rule appear here — tune the
+  rules in <a href="{{ url_for('settings') }}">Settings</a> to change what gets flagged.</p>
+{% endif %}
 {% endfor %}
 
 {% if pages > 1 %}
@@ -55,15 +60,28 @@
 {% endif %}
 
 <script>
-  async function markSeen(hash) {
-    try { await fetch('/api/queue/seen/' + hash, {method: 'POST'}); } catch (e) {}
+  // Mark seen in place: fade the card and swap the button for a "seen" tag — no reload.
+  // (The nav badge self-corrects from the next status poll.)
+  function markSeenUI(btn) {
+    const card = btn.closest('.qcard');
+    if (card) card.classList.add('seen');
+    const tag = document.createElement('span');
+    tag.className = 'muted seen-tag'; tag.textContent = 'seen';
+    btn.replaceWith(tag);
   }
   document.querySelectorAll('.btn-seen').forEach(btn => {
-    btn.onclick = async () => { await markSeen(btn.dataset.hash); location.reload(); };
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try { await fetch('/api/queue/seen/' + btn.dataset.hash, {method: 'POST'}); }
+      catch (e) { btn.disabled = false; return; }
+      markSeenUI(btn);
+    };
   });
-  document.getElementById('btn-seen-all').onclick = async () => {
-    try { await fetch('/api/queue/seen_all', {method: 'POST'}); } catch (e) {}
-    location.reload();
+  document.getElementById('btn-seen-all').onclick = async (e) => {
+    e.target.disabled = true;
+    try { await fetch('/api/queue/seen_all', {method: 'POST'}); } catch (err) {}
+    document.querySelectorAll('.btn-seen').forEach(markSeenUI);
+    e.target.disabled = false;
   };
 </script>
 {% endblock %}

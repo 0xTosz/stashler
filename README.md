@@ -1,130 +1,89 @@
 # Stashler
 
-An append-only archive + local evaluator for **your own** Path of Exile 2 trade listings.
+**Find the good items hiding in your own Path of Exile 2 trade listings.**
 
-Stashler captures every item you list on the PoE2 trade site exactly once, while it's
-listed, stores it in a local SQLite database, and flags the few worth a closer look. It
-never re-queries an item it already has, and it is deliberately conservative about the
-trade API rate limits (exceeding them earns a 15–30 minute lockout).
+Stashler quietly archives every item you have listed on the PoE2 trade site, then scores
+each one against editable rules and surfaces the small fraction worth a closer look — so
+you don't have to eyeball hundreds of listings by hand. It runs locally as a small desktop
+app with a system-tray icon and a browser UI; nothing leaves your machine.
 
-> The app is branded **Stashler**; the Python package, CLI module, and database file are
-> still named `stasher` (so existing `stasher.db` archives keep working). Run it with
-> `python -m stasher.cli …` (or the `stasher` console script).
+![Stashler overview](docs/screenshots/hero.png)
 
-## How it works
+> Branded **Stashler**; the Python package / CLI / database are still named `stasher`
+> internally, so existing `stasher.db` archives keep working.
 
-- **Backfill** — enumerates items you currently have listed via the trade search API.
-  The search only returns ~100 results per query, so stasher partitions each search by
-  item category and (recursively) by item level / rarity to capture everything.
-- **Live** — opens the trade live-search websocket, which *pushes* the id of each new
-  item as you list it. This is the cheap path that keeps the archive complete over time.
-- Both feed a single pipeline that fetches item details (max 10 per request, rate
-  limited) and `INSERT OR IGNORE`s them keyed on the item hash, so known items are free.
+---
 
-Because PoE2 is in beta there is no stash API; the trade endpoints are the only option.
+## Get started
 
-## Setup
+### Option A — standalone app (no Python)
 
-```bash
-pip install -e .            # or: pip install -e ".[dev]" for tests
-cp config.example.toml config.local.toml   # then edit it
-```
+1. Grab / build `Stashler.exe` (see [Building the .exe](#building-the-exe)) and double-click it.
+2. A **Stashler** icon appears in the system tray → **Open Stashler** opens the UI in your browser.
+3. In **Settings**, enter your **account name**, **POESESSID**, and pick your **League**
+   (there's an in-app guide for finding the POESESSID), then click **Test connection**.
+4. Hit **Auto-refresh** in the top bar. That's it — items start flowing into Records, and
+   anything noteworthy appears in the Queue.
 
-Set your `account_name` (the seller name **including** the `#discriminator`, e.g.
-`YourName#1234` — the search needs it), `poesessid` (the POESESSID cookie from
-pathofexile.com) and `league`. You can also set these later from the UI.
-`config.local.toml` and `*.db` are gitignored — your session id never gets committed.
-
-## Usage
+### Option B — from source
 
 ```bash
-stasher tray          # run in the system tray (Open UI / Quit) — best for desktop use
-stasher ui            # local web UI on http://127.0.0.1:7137
-stasher backfill      # one-shot: capture currently-listed items
-stasher watch         # near-live: periodic newest-first poll + occasional full backfill
-stasher live          # (experimental) connect the live websocket — see note below
-stasher run           # backfill, then live
-stasher evaluate      # (re)score archived items against rules.toml; --force re-checks all
+pip install -e .
+python -m stasher.cli tray      # tray app   (or: ... ui  for just the browser UI)
 ```
 
-### Standalone desktop app (no Python needed)
+The UI runs at `http://127.0.0.1:7137`. Everything (credentials, rules, league) is
+configured in the UI — no config files to edit.
 
-Non-technical users can run a single executable — no terminal, just a tray icon:
+---
 
-```bash
-pip install -e ".[build]"     # pyinstaller + tray deps
-python build.py               # -> dist/Stashler.exe
-```
+## The UI
 
-Double-clicking `Stashler.exe` puts a **Stashler** icon in the system tray; its menu has
-**Open Stashler** (opens the browser to the UI) and **Quit**. Account / POESESSID / league
-are entered in the UI (Settings), so nothing needs editing by hand.
+### Records — browse the whole archive
 
-### Where data is stored
+A fast, in-memory table of every captured item. Search by name/type, filter by rarity or
+"flagged only", and sort any column (including **Matches** — how many rules an item hit).
+Click a row to expand a trade-style tooltip card: properties, item level, implicit/explicit
+mods with their **P#/S# tier tags**, DPS, and exactly why it was flagged.
 
-By default the database, `rules.toml`, and the filter live in a per-user data directory
-(so a packaged app never writes next to its executable):
+![Records](docs/screenshots/records.png)
 
-| OS | Location |
-|----|----------|
-| Windows | `%LOCALAPPDATA%\Stashler\` |
-| macOS | `~/Library/Application Support/Stashler/` |
-| Linux | `$XDG_DATA_HOME/Stashler/` (or `~/.local/share/Stashler/`) |
+### Queue — your review shortlist
 
-Override with `--db <path>`, `STASHER_DATA=<dir>`, or `data_dir` / `db_path` in config.
-The UI prints the active data dir on launch. (A `rules.toml` in your *current directory*
-still takes precedence in dev.) The default UI port is **7137** (`--port` to change).
+The items worth a look. Each flagged item is a card showing the item and a **tile per rule
+match** ("Flagged · 3 matches"). Sort by **newest** or **most matches**, **Mark seen** to
+sink reviewed items (they fade in place), or **Mark all seen**. The nav badge — and your
+browser tab title — show the unseen count, so a backgrounded tab still nudges you.
 
-### Keeping the archive current
+![Review queue](docs/screenshots/queue.png)
 
-Use **`stasher watch`** (or the **Auto-refresh** toggle in the UI). It always leads with
-a cheap newest-first "light poll" every few minutes — one account search, then fetches
-only the listings you don't already have. A full adaptive backfill runs **only when a
-poll signals it might have missed something** — its whole newest page was new *and* you
-have more active listings than fit on one page. That same signal seeds a cold archive
-automatically (an account with ≤ one page of listings is fully captured by the poll
-alone), so the heavy scan never runs on a timer or on restart. Repeat runs are nearly
-free: already-archived items are skipped, so only genuinely new listings get fetched.
+### Settings — credentials, league, and rules
 
-Tuning (`config.local.toml`): `auto_poll_interval` (seconds between light polls, default
-180, min 30); `auto_full_interval` (optional timed full-backfill safety net — `0`
-disables it, which is the default since overflow is detected automatically).
+Enter your account name + POESESSID (with a built-in "how to get your POESESSID" guide),
+choose your league from a **live dropdown** fetched from the trade site, and **Test
+connection** to confirm it all works. Below that, an editor for your **evaluation rules**
+and the **item filter** — **Save** validates and re-scores the whole archive in one click.
+A **Danger zone → Force resync** wipes and re-fetches the archive if it ever looks wrong.
 
-If the archive ever looks wrong (e.g. you interrupted the very first sync), **Settings →
-Danger zone → Force resync** wipes the archived items + evaluations and re-fetches
-everything from scratch (your settings and rules are kept).
+![Settings](docs/screenshots/settings.png)
 
-> **Live websocket (`stasher live`) is experimental on PoE2.** It connects and
-> authenticates, but PoE2 delivers new-item notifications as an *encrypted* payload
-> (the official web client decrypts it client-side), so the ids can't be read by a
-> third-party tool. `stasher watch` is the supported way to stay current.
+The top bar also has a **Log** view (the raw query feed, handy for diagnostics) and a
+live rate-limit display — Stashler is deliberately conservative with the trade API
+(exceeding the limits earns a 15–30 minute lockout).
 
-### As a library
+---
 
-```python
-from stasher import Stasher
+## How evaluation works
 
-s = Stasher.from_config("config.local.toml")
-s.backfill()                 # synchronous, rate-limited
-s.run_live(stop_event)       # blocking; run in a thread if you need to keep going
-print(s.db_path)             # query the SQLite file directly from your other tools
-```
+Listing prices aren't reliable, so Stashler ignores them and scores each item **locally**
+against a chain of rules — reading only the archived item data (affix text, per-affix
+tier/roll ranges, base, item level, unique name). If **any** rule matches, the item is
+flagged with a plain-English reason. Most captures are trash, so the shipped rules are
+tight and aim to surface only the small fraction worth checking.
 
-## Evaluation & review queue
+![Evaluation rules](docs/screenshots/evaluation.png)
 
-Listing prices are not a reliable signal, so stasher scores each captured item locally
-against a chain of editable rules. If **any** rule fires, the item is flagged and shows
-up in the **Queue** view of the UI with a plain-English reason. Everything is offline —
-it reads only the archived item JSON (affix text, per-affix tier/roll ranges, base, ilvl,
-unique name). New items from live + backfill are scored the moment they're stored.
-
-The queue is a manual shortlist: most captures are trash, so the default rules are tight
-and aim to surface only the small fraction worth a look. In the UI you can **Mark seen**
-(reviewed items sink to the bottom), **Mark all seen**, or **Show all evaluated** to see
-below-threshold items too. The nav badge shows the unseen count.
-
-Rules live in an editable `rules.toml` (resolution order: `rules.local.toml` →
-`rules.toml` → packaged default). Three checker types:
+Three checker types, all edited from **Settings** (or in `rules.toml`):
 
 ```toml
 [[regex]]                  # match name / base / affix text (in-game wording)
@@ -137,24 +96,81 @@ name = "High-roll unique"
 min_percent = 90
 aggregate = "avg"          # avg | max | all
 
-[item_filter]              # a single app-managed loot-filter file (edit it in the UI)
+[item_filter]              # a single loot-filter file, edited/uploaded in the UI
 enabled = true             # Show/Hide blocks: BaseType, Class, Rarity, ItemLevel, Quality, Sockets
 ```
 
-Edit the rules, then run `stasher evaluate` to re-score the archive (it only re-checks
-items whose stored verdict predates your edit; `--force` re-checks everything). Tune the
-thresholds to your league — the shipped patterns are starting points, not gospel.
+Tune the thresholds to your league — the defaults are starting points, not gospel. Saving
+in the UI re-scores the whole archive, so the Queue always matches your current rules.
 
-You can also edit everything from the UI: **Settings → Evaluation rules** has an editor for
-the rules and for the single filter file (upload a `.filter` to replace its contents).
-**Save** validates, persists, and re-scores the whole archive in one step, so the queue
-always matches what you saved. Invalid edits are rejected with an error rather than silently
-disabling evaluation.
+---
 
-## Data
+## Keeping the archive current
 
-Everything lands in the `items` table: item hash (primary key), account, listed/fetched
-timestamps, price, name/type/rarity, whisper, and the full raw JSON blob of the
-listing+item for anything else you need downstream. Evaluation verdicts (flagged, reasons,
-seen) live in a separate `evaluations` table keyed by item hash — derived and safe to
-delete/recompute via `stasher evaluate --force`.
+Click **Auto-refresh** (or run `stasher watch`). It leads with a cheap newest-first "light
+poll" every few minutes — one account search, then it fetches only listings you don't
+already have. A full adaptive backfill runs **only when a poll detects it might have missed
+something**, never on a timer; that same signal also seeds a fresh archive automatically.
+Repeat runs are nearly free.
+
+> The trade **live websocket** is *not* used: on PoE2 the new-item feed is encrypted (only
+> the official web client can read it), so Auto-refresh is the supported way to stay current.
+
+---
+
+## Where your data lives
+
+The database, rules, and filter live in a per-user data directory, so the packaged app
+never writes next to its executable:
+
+| OS | Location |
+|----|----------|
+| Windows | `%LOCALAPPDATA%\Stashler\` |
+| macOS | `~/Library/Application Support/Stashler/` |
+| Linux | `$XDG_DATA_HOME/Stashler/` (or `~/.local/share/Stashler/`) |
+
+Your POESESSID never leaves this machine. Override storage with `--db`, `STASHER_DATA`, or
+`data_dir`/`db_path` in config; the UI prints the active data dir on launch.
+
+---
+
+## For developers
+
+```bash
+pip install -e ".[dev]"     # dev deps (pytest)
+python -m pytest            # run the tests
+python -m stasher.cli --help
+```
+
+CLI commands (the UI/tray cover everyday use; these are for scripting/headless):
+
+| command | what it does |
+|---------|--------------|
+| `tray` | system-tray app (Open UI / Quit) |
+| `ui` | local web UI on `:7137` (`--port` to change) |
+| `watch` | auto-refresh loop (light poll + occasional full backfill) |
+| `backfill` | one-shot capture of currently-listed items |
+| `evaluate` | re-score the archive against the rules (`--force` re-checks all) |
+
+As a library:
+
+```python
+from stasher import Stasher
+s = Stasher.from_config()    # uses the per-user data dir
+s.backfill()                 # synchronous, rate-limited
+print(s.db_path)             # query the SQLite file directly
+```
+
+### Building the .exe
+
+```bash
+pip install -e ".[build]"   # pyinstaller + tray deps
+python build.py             # -> dist/Stashler.exe (windowed tray app)
+```
+
+### Data model
+
+Captured items land in the `items` table (hash PK, account, timestamps, price,
+name/type/rarity, whisper, and the full listing+item JSON). Evaluation verdicts live in a
+separate `evaluations` table (flagged, reasons, seen) — derived and safe to recompute with
+`stasher evaluate --force`.

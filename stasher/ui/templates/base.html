@@ -106,10 +106,12 @@
 
     /* --- records reactive table --- */
     .rec-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-    table.rec th { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.rec th { cursor: pointer; user-select: none; white-space: nowrap;
+                   position: sticky; top: 0; z-index: 2; background: #1b1e24; }
     table.rec th .arrow { color: #6cb6ff; }
     table.rec tbody tr.row { cursor: pointer; }
-    table.rec tbody tr.row:hover { background: #1b1e24; }
+    table.rec tbody tr.row.alt { background: #15171c; }
+    table.rec tbody tr.row:hover { background: #1f242c; }
     table.rec td.flag { text-align: center; }
     .pill.flagged { background: #1f4023; color: #9be3a3; }
     .rec-detail td { background: #101216; }
@@ -172,6 +174,31 @@
     document.getElementById('rm-full').onclick = () => post('/api/rate_mode/full');
     document.getElementById('rm-restrictive').onclick = () => post('/api/rate_mode/restrictive');
 
+    // --- shared, readable timestamps: "3h ago" with the full local time on hover ---
+    function relTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d)) return iso;
+      const s = (Date.now() - d.getTime()) / 1000, a = Math.abs(s);
+      let r;
+      if (a < 45) r = 'just now';
+      else if (a < 3600) r = Math.round(a / 60) + 'm';
+      else if (a < 86400) r = Math.round(a / 3600) + 'h';
+      else if (a < 2592000) r = Math.round(a / 86400) + 'd';
+      else r = d.toLocaleDateString();
+      return (r === 'just now' || r.includes('/')) ? r : (s >= 0 ? r + ' ago' : 'in ' + r);
+    }
+    function formatTimes(root) {
+      (root || document).querySelectorAll('[data-ts]').forEach(el => {
+        const iso = el.dataset.ts;
+        if (!iso) { el.textContent = '—'; return; }
+        el.textContent = relTime(iso);
+        const d = new Date(iso);
+        if (!isNaN(d)) el.title = d.toLocaleString();
+      });
+    }
+    window.relTime = relTime; window.formatTimes = formatTimes;
+
     function bucket(b) {
       const pct = b.max_hits ? Math.min(100, 100 * b.used / b.max_hits) : 0;
       const effPct = b.max_hits ? Math.min(100, 100 * b.limit_eff / b.max_hits) : 100;
@@ -200,6 +227,7 @@
         queueBadge.style.display = s.queue_unseen > 0 ? '' : 'none';
         queueBadge.classList.toggle('live', s.queue_unseen > 0);
       }
+      document.title = (s.queue_unseen > 0 ? '(' + s.queue_unseen + ') ' : '') + 'Stashler';
       // Flag missing credentials: red Settings link + a disabled capture button.
       const setupOk = s.setup_ok;
       const settingsLink = document.getElementById('nav-settings');
@@ -243,8 +271,9 @@
          <span class="muted">${q.target || ''}</span>
          ${q.http_code || ''} ${q.detail ? '· ' + q.detail : ''}</div>`).join('');
     }
+    formatTimes();          // server-rendered timestamps (queue, etc.)
     refresh();
-    setInterval(refresh, 1500);
+    setInterval(() => { refresh(); formatTimes(); }, 1500);  // keep "ago" times fresh
   </script>
 </body>
 </html>

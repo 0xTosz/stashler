@@ -58,11 +58,15 @@ def create_app(stasher) -> Flask:
             return fresh
         return cached  # stale/empty fallback when the trade site is unreachable
 
+    def _setup_ok() -> bool:
+        creds = stasher.client.creds()
+        return bool(creds.account and creds.poesessid)
+
     @app.route("/")
     def records():
         # Shell only; the table is populated client-side from /api/records (the whole
         # dataset is assumed to fit in memory, <10k rows).
-        return render_template("records.html")
+        return render_template("records.html", setup_ok=_setup_ok())
 
     @app.route("/api/records")
     def api_records():
@@ -142,6 +146,7 @@ def create_app(stasher) -> Flask:
             pages=pages,
             show_all=show_all,
             sort=sort,
+            setup_ok=_setup_ok(),
         )
 
     @app.route("/api/queue/seen/<item_hash>", methods=["POST"])
@@ -222,6 +227,17 @@ def create_app(stasher) -> Flask:
     @app.route("/api/leagues")
     def api_leagues():
         return jsonify(leagues_fetch(force=request.args.get("refresh") == "1"))
+
+    @app.route("/api/test-connection", methods=["POST"])
+    def api_test_connection():
+        creds = stasher.client.creds()
+        if not (creds.account and creds.poesessid):
+            return jsonify({"ok": False, "detail": "Set account name and POESESSID, then Save first."})
+        try:
+            res = stasher.client.search(target="test")
+            return jsonify({"ok": True, "total": res.get("total", 0)})
+        except Exception as exc:  # noqa: BLE001 - report any failure to the UI
+            return jsonify({"ok": False, "detail": str(exc)[:180]})
 
     @app.route("/api/status")
     def api_status():

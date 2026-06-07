@@ -28,8 +28,23 @@
            placeholder="{{ '•••••• (set — leave blank to keep)' if has_poesessid else 'paste cookie value' }}"
            style="width:100%">
     <small class="muted">Your pathofexile.com session cookie. Stored locally only.</small>
+    <details style="margin-top:4px;">
+      <summary class="muted" style="cursor:pointer;">How do I get my POESESSID?</summary>
+      <ol class="muted" style="margin:6px 0 0; padding-left:18px; font-size:13px; line-height:1.5;">
+        <li>Log in at <code>pathofexile.com</code> in your browser.</li>
+        <li>Open DevTools (<kbd>F12</kbd>) → <strong>Application</strong> tab (Chrome/Edge) or
+          <strong>Storage</strong> (Firefox).</li>
+        <li>Under <strong>Cookies → https://www.pathofexile.com</strong>, find
+          <code>POESESSID</code> and copy its <strong>Value</strong>.</li>
+        <li>Paste it above and Save. It never leaves your machine.</li>
+      </ol>
+    </details>
   </label>
-  <div><button type="submit">Save</button></div>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <button type="submit">Save</button>
+    <button type="button" id="btn-test" title="Save first, then verify your credentials work">Test connection</button>
+    <span id="test-msg" class="muted"></span>
+  </div>
 </form>
 
 <hr style="border:none; border-top:1px solid #23272e; margin:22px 0">
@@ -140,5 +155,21 @@
   }
   document.getElementById('league-refresh').onclick = () => loadLeagues(true);
   loadLeagues(false);
+
+  // Verify saved credentials with one account search.
+  const tbtn = document.getElementById('btn-test');
+  if (tbtn) tbtn.onclick = async () => {
+    const msg = document.getElementById('test-msg');
+    tbtn.disabled = true; msg.className = 'muted'; msg.textContent = 'testing…';
+    try {
+      const r = await (await fetch('/api/test-connection', { method: 'POST' })).json();
+      if (r.ok) {
+        msg.className = 'ok';
+        msg.textContent = '✓ Connected — ' + r.total + ' of your listings found'
+          + (r.total === 0 ? ' (nothing listed right now)' : '');
+      } else { msg.className = 'error'; msg.textContent = '⚠ ' + (r.detail || 'failed'); }
+    } catch (e) { msg.className = 'error'; msg.textContent = '⚠ request failed'; }
+    tbtn.disabled = false;
+  };
 </script>
 {% endblock %}
