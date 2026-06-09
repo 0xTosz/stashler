@@ -28,7 +28,13 @@ def main() -> int:
 
 
 def _fatal(msg: str) -> None:
-    sys.stderr.write(msg)
+    # The windowed exe has no console, so sys.stderr is None — guard the write so the MessageBox
+    # below still runs (otherwise the error handler itself crashes and hides the real cause).
+    if sys.stderr is not None:
+        try:
+            sys.stderr.write(msg)
+        except Exception:
+            pass
     if sys.platform == "win32":
         try:
             import ctypes
