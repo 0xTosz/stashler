@@ -19,11 +19,13 @@
 {% set b = score_breakdown %}
 <div class="score-bd">
   <div class="why-h">Archetype score
-    <span class="score-badge tier-{{ b.matches[0].tier }}">
-      <span class="score-tier">{{ b.matches[0].tier }}</span>
-      <span class="score-val">{{ '%.2f'|format(b.score) }}</span>
+    <span class="score-badge tier-{{ b.tier }}">
+      <span class="score-tier">{{ b.tier }}</span>
+      <span class="score-val">{{ '%.2f'|format(b.overall) }}</span>
     </span>
-    <span class="muted">best of {{ b.matches|length }} matching archetype{{ '' if b.matches|length == 1 else 's' }}</span>
+    <span class="muted">peak {{ '%.2f'|format(b.peak) }}
+      {%- if b.breadth > 0 %} + breadth {{ '%.2f'|format(b.breadth) }}{% endif %}
+      · {{ b.matches|length }} matching archetype{{ '' if b.matches|length == 1 else 's' }}</span>
   </div>
 
   {% for m in b.matches[:8] %}
@@ -31,12 +33,15 @@
     <div>
       <strong>{{ m.name }}</strong>
       <span class="score-badge tier-{{ m.tier }}"><span>{{ m.tier }}</span>
-        <span class="score-val">{{ '%.2f'|format(m.value) }}</span></span>
+        <span class="score-val">{{ '%.2f'|format(m.contribution) }}</span></span>
       <span class="muted">{{ m.satisfied }}/{{ m.required }}
-        {%- if not m.full %} · partial{% endif %}
-        {%- if m.craftable %} · craftable ({{ m.free_slots }} free){% endif %}</span>
+        {%- if m.full %} · full
+        {%- elif m.reachable %} · craftable ({{ m.free_slots }} free)
+        {%- else %} · partial · no open slot{% endif %}</span>
     </div>
-    <div class="muted">value = archetype {{ '%.2f'|format(m.archetype_score) }}
+    <div class="muted">contribution {{ '%.2f'|format(m.contribution) }} =
+      quality {{ '%.2f'|format(m.quality) }} × completion {{ '%.2f'|format(m.completion) }}
+      <br>quality = archetype {{ '%.2f'|format(m.archetype_score) }}
       × mod-roll {{ '%.2f'|format(m.mod_score) }} × base {{ '%.2f'|format(m.base_factor) }}
       {%- if m.base_grade %} (base grade {{ m.base_grade }})
       {%- elif m.bases_mode == 'baseless' %} (baseless)

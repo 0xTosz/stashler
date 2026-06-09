@@ -113,6 +113,21 @@ class Evaluator:
         aset.save(archetype_set_path(base))
         self.reload()
 
+    def set_archetype_enabled(self, arch_id: str, on: bool) -> bool:
+        """Flip one archetype's ``enabled`` flag in the working set and persist (reloads the
+        checkers). Returns False if no set is loaded or the id is unknown. Does **not** re-evaluate
+        the stored archive — that's a manual step on the Rules page (a rule toggle is global, so
+        queue scores only change after *Re-evaluate archive*)."""
+        aset = self.archetype_set()
+        if aset is None:
+            return False
+        target = next((a for a in aset.archetypes if a.id == arch_id), None)
+        if target is None:
+            return False
+        target.enabled = on
+        self.save_archetype_set(aset)
+        return True
+
     def upload_archetype_set(self, text: str) -> None:
         """Install a freshly mined set: validate, then write the working copy *and* a pristine
         ``.default`` copy (for Restore defaults). Raises ValueError on invalid YAML."""

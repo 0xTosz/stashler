@@ -44,6 +44,8 @@
       {% if it["listed_at"] %}<div class="muted">listed <span class="ts" data-ts="{{ it['listed_at'] }}"></span></div>{% endif %}
       {% if it["stash_regex"] %}<button class="btn-regex" data-regex="{{ it['stash_regex'] }}"
         title="Copies a search that highlights this item in the stash tab (Ctrl-F)">Copy stash regex</button>{% endif %}
+      {% if it["score"] is not none %}<button class="btn-rules" data-hash="{{ it['hash'] }}"
+        title="See which rules matched, the score calculation, and craftable upgrade paths">Matched rules</button>{% endif %}
     </div>
     {% if it["seen"] %}<span class="muted seen-tag">seen</span>
     {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
@@ -67,6 +69,45 @@
   {% if page < pages %}<a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg, page=page+1) }}">Next →</a>{% endif %}
 </div>
 {% endif %}
+
+<div id="rules-modal" class="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-box">
+    <button class="modal-x" data-close title="Close (Esc)">✕</button>
+    <h3>Matched rules</h3>
+    <div id="rules-modal-body"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+
+<style>
+  .modal[hidden] { display:none; }
+  .modal { position:fixed; inset:0; z-index:50; display:flex; align-items:flex-start;
+    justify-content:center; padding:5vh 12px; }
+  .modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  .modal-box { position:relative; background:#14161a; border:1px solid #2a2f37; border-radius:8px;
+    width:min(720px,96vw); max-height:88vh; overflow:auto; padding:14px 16px; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  .modal-box h3 { margin:0 0 8px; }
+  .modal-x { position:absolute; top:8px; right:10px; background:none; border:none; color:#9aa1ab;
+    font-size:16px; cursor:pointer; }
+  .rp-head { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+  .rp-warn { font-size:12px; color:#d0a85a; background:#241f14; border:1px solid #5a4a26;
+    border-radius:5px; padding:6px 9px; margin:6px 0 10px; }
+  .rp-warn a { color:#e0c074; }
+  .rp-tabs { display:flex; gap:6px; border-bottom:1px solid #23272e; margin-bottom:8px; }
+  .rp-tab { background:none; border:none; color:#9aa1ab; padding:6px 10px; cursor:pointer;
+    border-bottom:2px solid transparent; }
+  .rp-tab.on { color:#e8ebef; border-bottom-color:#8ab6ff; }
+  .rp-pane { display:none; } .rp-pane.on { display:block; }
+  .rp-rule, .rp-target { border:1px solid #23272e; border-radius:6px; margin:5px 0; background:#15171c; }
+  .rp-rule > summary { padding:6px 9px; cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .rp-detail { padding:6px 10px 9px; border-top:1px solid #23272e; }
+  .rp-target { padding:6px 9px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+  .rp-reqs { width:100%; border-collapse:collapse; margin-top:6px; }
+  .rp-reqs th, .rp-reqs td { text-align:left; padding:2px 6px; border-bottom:1px solid #23272e; }
+  .rp-reqs th { color:#9aa1ab; font-weight:600; } .rp-reqs .num { text-align:right; }
+  .rp-reqs .hit { color:#9be3a3; } .rp-reqs .miss { color:#8b929c; }
+  .rp-miss { color:#cdb46a; } .rp-off { opacity:.45; }
+</style>
 
 <script>
   // Mark seen in place: fade the card and swap the button for a "seen" tag — no reload.
@@ -109,5 +150,47 @@
       setTimeout(() => { btn.textContent = old; }, 1200);
     };
   });
+
+  // Matched-rules popup: fetch the breakdown fragment into the modal, wire tabs + disable toggles.
+  const modal = document.getElementById('rules-modal');
+  const modalBody = document.getElementById('rules-modal-body');
+  function closeModal() { modal.hidden = true; modalBody.innerHTML = '<p class="muted">Loading…</p>'; }
+  function wirePopup() {
+    modalBody.querySelectorAll('.rp-tab').forEach(tab => {
+      tab.onclick = () => {
+        const name = tab.dataset.tab;
+        modalBody.querySelectorAll('.rp-tab').forEach(t => t.classList.toggle('on', t === tab));
+        modalBody.querySelectorAll('.rp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name));
+      };
+    });
+    // Toggling a rule persists immediately (global) but does NOT re-evaluate the archive — we grey
+    // the row in place rather than re-fetch (a disabled rule drops out of the breakdown entirely).
+    modalBody.querySelectorAll('.rp-toggle').forEach(cb => {
+      cb.onchange = async () => {
+        cb.disabled = true;
+        try {
+          const r = await fetch('/api/rules/' + encodeURIComponent(cb.dataset.archId) + '/enabled',
+            {method: 'POST', headers: {'Content-Type': 'application/json'},
+             body: JSON.stringify({enabled: cb.checked})});
+          if (!r.ok) throw new Error('http ' + r.status);
+        } catch (e) { cb.checked = !cb.checked; cb.disabled = false; return; }
+        const row = cb.closest('.rp-rule, .rp-target');
+        if (row) row.classList.toggle('rp-off', !cb.checked);
+        cb.disabled = false;
+      };
+    });
+  }
+  document.querySelectorAll('.btn-rules').forEach(btn => {
+    btn.onclick = async () => {
+      modal.hidden = false;
+      try {
+        const r = await fetch('/records/' + btn.dataset.hash + '/rules');
+        modalBody.innerHTML = await r.text();
+        wirePopup();
+      } catch (e) { modalBody.innerHTML = '<p class="error">Failed to load rules.</p>'; }
+    };
+  });
+  modal.querySelectorAll('[data-close]').forEach(el => el.onclick = closeModal);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
 </script>
 {% endblock %}

@@ -30,6 +30,9 @@ def _apply_archetype_edits(aset, form) -> None:
     ri = fnum("scoring.roll_influence")
     if ri is not None:
         aset.scoring.roll_influence = max(0.0, min(1.0, ri))
+    mri = fnum("scoring.magic_roll_influence")
+    if mri is not None:
+        aset.scoring.magic_roll_influence = max(0.0, min(1.0, mri))
     for t in ("T1", "T2", "T3", "below"):
         v = fnum(f"scoring.tier.{t}")
         if v is not None:
@@ -37,9 +40,12 @@ def _apply_archetype_edits(aset, form) -> None:
     pt = fnum("scoring.partial_threshold")
     if pt is not None:
         aset.scoring.partial_threshold = max(0.0, min(1.0, pt))
-    osw = fnum("scoring.open_slot_weight")
-    if osw is not None:
-        aset.scoring.open_slot_weight = max(0.0, min(1.0, osw))
+    cc = fnum("scoring.craft_credit")
+    if cc is not None:
+        aset.scoring.craft_credit = max(0.0, min(1.0, cc))
+    bc = fnum("scoring.breadth_cap")
+    if bc is not None:
+        aset.scoring.breadth_cap = max(0.0, min(1.0, bc))
 
     for a in aset.archetypes:
         a.enabled = form.get(f"arch.{a.id}.enabled") == "on"
@@ -165,6 +171,30 @@ def create_app(stasher) -> Flask:
             whisper=listing.get("whisper"),
             score_breakdown=stasher.evaluator.explain_score(item),
         )
+
+    @app.route("/records/<item_hash>/rules")
+    def record_rules(item_hash):
+        """The matched-rules popup fragment: the live archetype breakdown (overall = peak +
+        breadth, per-rule contributions + calculation) and the craftable upgrade-path targets."""
+        row = store.get_record(item_hash)
+        if not row:
+            return "not found", 404
+        try:
+            entry = json.loads(row["raw_json"])
+        except (ValueError, TypeError):
+            return "bad record", 500
+        item = entry.get("item") or {}
+        bd = stasher.evaluator.explain_score(item)
+        if bd is None:
+            return "<p class='muted'>The archetype_set checker is not active.</p>"
+        return render_template("_rules_popup.html", b=bd, hash=item_hash)
+
+    @app.route("/api/rules/<arch_id>/enabled", methods=["POST"])
+    def api_rule_enabled(arch_id):
+        on = bool((request.get_json(silent=True) or {}).get("enabled", True))
+        if not stasher.evaluator.set_archetype_enabled(arch_id, on):
+            return jsonify({"ok": False, "error": "no set loaded or unknown rule"}), 404
+        return jsonify({"ok": True, "enabled": on})
 
     @app.route("/queue")
     def queue():
@@ -308,6 +338,12 @@ def create_app(stasher) -> Flask:
             return _render_rules(rules_error="No archetype set loaded — upload one first.")
         _apply_archetype_edits(aset, request.form)
         stasher.evaluator.save_archetype_set(aset)
+        return _render_rules(rules_message=_reeval_msg())
+
+    @app.route("/rules/reevaluate", methods=["POST"])
+    def rules_reevaluate():
+        """Re-score every stored item against the current set — applies popup rule toggles (and
+        any saved edits) to the queue without re-uploading a set."""
         return _render_rules(rules_message=_reeval_msg())
 
     @app.route("/rules/upload", methods=["POST"])

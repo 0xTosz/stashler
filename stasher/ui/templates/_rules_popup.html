@@ -1,0 +1,80 @@
+{# Matched-rules popup body. Rendered into the queue modal from explain_score(item).
+   `b` = {overall, peak, breadth, tier, matches[], targets[], item}; `hash` = item hash. #}
+<div class="rp" data-hash="{{ hash }}">
+  <div class="rp-head">
+    <span class="score-badge tier-{{ b.tier }}">
+      <span class="score-tier">{{ b.tier }}</span>
+      <span class="score-val">{{ '%.2f'|format(b.overall) }}</span>
+    </span>
+    <span class="muted">overall = peak {{ '%.2f'|format(b.peak) }}
+      {%- if b.breadth > 0 %} + breadth {{ '%.2f'|format(b.breadth) }}{% endif %}</span>
+  </div>
+  <p class="rp-warn">⚠ Disabling a rule is saved immediately but a rule is <em>global</em> —
+    queue scores update only after <a href="{{ url_for('rules') }}">Rules → Re-evaluate archive</a>.</p>
+
+  <div class="rp-tabs">
+    <button class="rp-tab on" data-tab="matched">Matched ({{ b.matches|length }})</button>
+    <button class="rp-tab" data-tab="targets">Upgrade paths ({{ b.targets|length }})</button>
+  </div>
+
+  {# --- Matched: rules contributing to the score, best first --- #}
+  <div class="rp-pane on" data-pane="matched">
+    {% for m in b.matches %}
+    <details class="rp-rule">
+      <summary>
+        <input type="checkbox" class="rp-toggle" data-arch-id="{{ m.archetype }}" checked
+               title="Disable this rule (global)" onclick="event.stopPropagation()">
+        <span class="score-badge tier-{{ m.tier }}"><span>{{ m.tier }}</span>
+          <span class="score-val">{{ '%.2f'|format(m.contribution) }}</span></span>
+        <strong>{{ m.name }}</strong>
+        <span class="muted">{{ m.satisfied }}/{{ m.required }}
+          {%- if m.full %} · full
+          {%- elif m.reachable %} · craftable ({{ m.free_slots }} free)
+          {%- else %} · partial · no open slot{% endif %}</span>
+      </summary>
+      <div class="rp-detail">
+        <div class="muted">contribution {{ '%.2f'|format(m.contribution) }} =
+          quality {{ '%.2f'|format(m.quality) }} × completion {{ '%.2f'|format(m.completion) }}
+          <br>quality = archetype {{ '%.2f'|format(m.archetype_score) }}
+          × mod-roll {{ '%.2f'|format(m.mod_score) }} × base {{ '%.2f'|format(m.base_factor) }}
+          {%- if m.base_grade %} (base grade {{ m.base_grade }})
+          {%- elif m.bases_mode == 'baseless' %} (baseless)
+          {%- else %} (off-archetype base){% endif %}</div>
+        <table class="rp-reqs">
+          <tr><th>affix</th><th class="num">rolled</th><th>tier</th><th class="num">weight</th></tr>
+          {% for r in m.requires %}
+          <tr>
+            <td>{{ r.phrase }}{% if r.pool %} <span class="muted">(any {{ r.min_count }}; {{ r.present }} present)</span>{% endif %}</td>
+            <td class="num">{{ r.magnitude if r.magnitude is not none else '—' }}</td>
+            <td class="{{ 'hit' if r.tier_value > 0 else 'miss' }}">{{ '%.2f'|format(r.tier_value) }}{% if r.bands %}
+              <span class="muted">[{% for band in r.bands %}{{ band.tier }}≥{{ band.min }}{{ ', ' if not loop.last }}{% endfor %}]</span>{% endif %}</td>
+            <td class="num">{{ '%.2f'|format(r.weight) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </details>
+    {% else %}
+    <p class="muted">No rules matched this item.</p>
+    {% endfor %}
+  </div>
+
+  {# --- Upgrade paths: rules this item could be crafted into (open slots fit the missing affixes) --- #}
+  <div class="rp-pane" data-pane="targets">
+    {% for t in b.targets %}
+    <div class="rp-target">
+      <input type="checkbox" class="rp-toggle" data-arch-id="{{ t.archetype }}" checked
+             title="Disable this rule (global)">
+      <span class="score-badge tier-{{ t.tier }}"><span>{{ t.tier }}</span>
+        <span class="score-val">{{ '%.2f'|format(t.value) }}</span></span>
+      <strong>{{ t.name }}</strong>
+      <div class="muted">{{ t.satisfied }}/{{ t.required }} now · missing
+        {%- for mm in t.missing %} <span class="rp-miss">{{ mm.phrase }}{% if mm.kind %} ({{ mm.kind }}){% endif %}</span>{% endfor %}
+        → {{ t.open_prefix }} open prefix / {{ t.open_suffix }} open suffix</div>
+    </div>
+    {% else %}
+    <p class="muted">No craftable upgrade paths — every reachable rule is already a full match,
+      or the open slots don't fit any rule's missing affixes.</p>
+    {% endfor %}
+  </div>
+</div>

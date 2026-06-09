@@ -24,18 +24,20 @@ MAX_AFFIXES = {"Magic": 2, "Rare": 6}  # explicit-affix ceiling, for open-slot (
 MAX_PREFIX = MAX_SUFFIX = 3  # a rare holds ≤3 prefixes + ≤3 suffixes (the craft target)
 TIER_CUTS = [("S", 0.80), ("A", 0.62), ("B", 0.45), ("C", 0.28), ("D", 0.0)]
 
-# How strongly the rolled magnitude affects value, and how steeply tier maps to quality.
-# Both live in the set's `scoring` block and are user-tunable on the Rules page. The tier
-# curve is deliberately steep — a T1 roll is worth much more than T2/T3.
-DEFAULT_ROLL_INFLUENCE = 0.6
+# How strongly the rolled tier drives value, and how steeply tier maps to quality. Tunable per
+# set (Rules page). The tier curve is deliberately steep (a T1 roll ≫ T2/T3) and the roll
+# influence is high — 3× T1 should beat 4× T2.
+DEFAULT_ROLL_INFLUENCE = 0.8
+DEFAULT_MAGIC_ROLL_INFLUENCE = 0.95   # magic has ≤2 affixes → only the best are worth it
 DEFAULT_TIER_WEIGHTS = {"T1": 1.0, "T2": 0.5, "T3": 0.2, "below": 0.05}
 
-# Crafting-aware scoring. Every affix is its own unit (no stat aggregation): a rule is the full
-# "ideal" item and partial matches score lower. Open affix slots are premium (a crafting path),
-# and hybrid affixes (one slot, two stats) are premium (slot-efficient). Both knobs live in the
-# set's `scoring` block (Rules page).
+# Crafting-aware scoring. A rule is the full "ideal" item; a per-rule **contribution** =
+# quality × completion, where completion = coverage + (1-coverage)·craft_credit for a *reachable*
+# partial (missing affixes fit open prefix/suffix slots) — i.e. an item you can finish into the
+# rule scores closer to full; a non-reachable partial keeps just its realized coverage.
 DEFAULT_PARTIAL_THRESHOLD = 0.6   # min coverage to flag a partial (3/4, 4/5, 4/6); below → no flag
-DEFAULT_OPEN_SLOT_WEIGHT = 0.3    # how much free affix slots (crafting headroom) lift value
+DEFAULT_CRAFT_CREDIT = 0.4        # value of a reachable-but-missing affix vs actually having it
+DEFAULT_BREADTH_CAP = 0.3         # max boost a base gets from matching many *distinct* rules
 HYBRID_PREMIUM = 1.15             # weight multiplier for a hybrid (one-slot, two-stat) requirement
 # Magic items are evaluated against the same rare templates as **craft bases**: they can satisfy
 # only ≤2 of a 4+ unit rule but have open slots to craft the rest. They count only if every kept
@@ -192,24 +194,30 @@ class Scoring:
     """Tunable scoring knobs, stored per set and editable on the Rules page."""
 
     roll_influence: float = DEFAULT_ROLL_INFLUENCE
+    magic_roll_influence: float = DEFAULT_MAGIC_ROLL_INFLUENCE
     tier_weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TIER_WEIGHTS))
     partial_threshold: float = DEFAULT_PARTIAL_THRESHOLD
-    open_slot_weight: float = DEFAULT_OPEN_SLOT_WEIGHT
+    craft_credit: float = DEFAULT_CRAFT_CREDIT
+    breadth_cap: float = DEFAULT_BREADTH_CAP
 
     def to_dict(self) -> dict:
         return {"roll_influence": round(self.roll_influence, 3),
+                "magic_roll_influence": round(self.magic_roll_influence, 3),
                 "tier_weights": dict(self.tier_weights),
                 "partial_threshold": round(self.partial_threshold, 3),
-                "open_slot_weight": round(self.open_slot_weight, 3)}
+                "craft_credit": round(self.craft_credit, 3),
+                "breadth_cap": round(self.breadth_cap, 3)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Scoring":
         d = d or {}
         tw = {str(k): float(v) for k, v in (d.get("tier_weights") or {}).items()}
         return cls(roll_influence=float(d.get("roll_influence", DEFAULT_ROLL_INFLUENCE)),
+                   magic_roll_influence=float(d.get("magic_roll_influence", DEFAULT_MAGIC_ROLL_INFLUENCE)),
                    tier_weights=tw or dict(DEFAULT_TIER_WEIGHTS),
                    partial_threshold=float(d.get("partial_threshold", DEFAULT_PARTIAL_THRESHOLD)),
-                   open_slot_weight=float(d.get("open_slot_weight", DEFAULT_OPEN_SLOT_WEIGHT)))
+                   craft_credit=float(d.get("craft_credit", DEFAULT_CRAFT_CREDIT)),
+                   breadth_cap=float(d.get("breadth_cap", DEFAULT_BREADTH_CAP)))
 
 
 @dataclass
@@ -402,6 +410,37 @@ class Archetype:
                 total += 1
         return total
 
+    def _slot_demand(self, mods, families, affix_slots) -> tuple[int, int, list[dict]]:
+        """Open prefix/suffix counts on the item + the list of unsatisfied requirements with the
+        slot ``kind`` each needs. Shared by ``_slot_reachable`` (a boolean gate) and
+        ``upgrade_target`` (which surfaces the missing affixes). ``kind`` is ``prefix``/``suffix``/
+        ``both`` (from ``affix_slots``) or ``None`` when the mod is unclassified. Each missing slot
+        of a partially-filled family becomes its own ``missing`` entry."""
+        used_p = sum(1 for k in mods if affix_slots.get(k) == "prefix")
+        used_s = sum(1 for k in mods if affix_slots.get(k) == "suffix")
+        missing: list[dict] = []
+        for r in self.requires:
+            if r.family:
+                members = families[r.family].members if r.family in families else []
+                gap = max(0, r.min_count - sum(1 for m in members if m in mods))
+                kind = next((affix_slots[m] for m in members if m in affix_slots), None)
+                for _ in range(gap):
+                    missing.append({"phrase": r.phrase, "family": r.family, "kind": kind})
+            elif r.key not in mods:
+                missing.append({"phrase": r.phrase, "key": r.key, "kind": affix_slots.get(r.key)})
+        return MAX_PREFIX - used_p, MAX_SUFFIX - used_s, missing
+
+    @staticmethod
+    def _missing_fits(open_p: int, open_s: int, missing: list[dict]) -> bool:
+        """Whether every missing requirement fits an open slot of its own type — fixed prefix/
+        suffix needs must fit their pool; flexible ``both`` needs take the leftover of either pool.
+        Unclassified (``kind`` None) needs never force a false negative (conservative)."""
+        need_p = sum(1 for m in missing if m["kind"] == "prefix")
+        need_s = sum(1 for m in missing if m["kind"] == "suffix")
+        need_either = sum(1 for m in missing if m["kind"] == "both")
+        return (need_p <= open_p and need_s <= open_s
+                and need_either <= (open_p - need_p) + (open_s - need_s))
+
     def _slot_reachable(self, mods, families, affix_slots) -> bool:
         """Whether the missing requirements can be **crafted into open slots of the right type** —
         a rare holds ≤3 prefixes + ≤3 suffixes, so a missing prefix needs an open *prefix* slot.
@@ -410,50 +449,31 @@ class Archetype:
         ``affix_slots`` (older sets) → always reachable."""
         if not affix_slots:
             return True
-        used_p = sum(1 for k in mods if affix_slots.get(k) == "prefix")
-        used_s = sum(1 for k in mods if affix_slots.get(k) == "suffix")
-        need_p = need_s = need_either = 0   # 'both' mods (e.g. rarity) fill an open slot of either type
-        for r in self.requires:
-            if r.family:
-                members = families[r.family].members if r.family in families else []
-                missing = max(0, r.min_count - sum(1 for m in members if m in mods))
-                kind = next((affix_slots[m] for m in members if m in affix_slots), None)
-            elif r.key not in mods:
-                missing, kind = 1, affix_slots.get(r.key)
-            else:
-                continue
-            if missing and kind == "prefix":
-                need_p += missing
-            elif missing and kind == "suffix":
-                need_s += missing
-            elif missing and kind == "both":
-                need_either += missing
-        open_p, open_s = MAX_PREFIX - used_p, MAX_SUFFIX - used_s
-        # fixed needs must fit their pool; flexible 'both' needs fit the leftover of either pool
-        return (need_p <= open_p and need_s <= open_s
-                and need_either <= (open_p - need_p) + (open_s - need_s))
+        open_p, open_s, missing = self._slot_demand(mods, families, affix_slots)
+        return self._missing_fits(open_p, open_s, missing)
 
     def score(self, item: dict, families: dict[str, "ModFamily"] | None = None,
               scoring: "Scoring | None" = None,
               affix_slots: dict[str, str] | None = None) -> dict | None:
-        """Graded value for an item, or None below the coverage threshold.
+        """One rule's **contribution** for an item, or None if it doesn't meaningfully match.
 
-        A rule is the full "ideal" item; **partial** matches (e.g. 4 of 5 units) still score, by
-        coverage. **Open affix slots are premium** (crafting headroom) and lift the value for full
-        and partial alike; **hybrid** requirements (one slot, two stats) weigh more. A partial is
-        discarded if its missing affixes can't fit the item's open **prefix/suffix** slots.
-        ``scoring`` controls roll influence, per-tier weights, the partial floor, open-slot weight."""
+        ``contribution = quality × completion``:
+        * **quality** = the rule's base value × a tier-weighted roll blend × base grade — the
+          worth of the affixes the item actually has (tiers weigh heavily; magic leans harder).
+        * **completion** = ``coverage + (1-coverage)·craft_credit`` when the missing affixes are
+          **reachable** (fit open prefix/suffix slots) — so a finishable partial scores near a
+          full match; a non-reachable partial keeps just its realized ``coverage`` (still good,
+          no upgrade credit). A full match → completion 1.
+        Below the partial floor (and magic needing ≥2 high-tier kept affixes) → no match."""
         sc = scoring or Scoring()
         fams = families or {}
         if not self._gates_ok(item):
             return None
         mods = item.get("mods") or {}
         n = len(self.requires)
-        units = self.unit_count()
         if n == 0:
             return None
-        sat = 0
-        sat_units = 0
+        sat = sat_units = 0
         wsum = tvsum = 0.0
         per_mod = []
         for r in self.requires:
@@ -468,39 +488,63 @@ class Archetype:
                             "hybrid": r.hybrid, "tier_value": round(tv, 3)})
         full = sat == n
         is_magic = item.get("rarity") == "Magic"
-        # Open slots are measured against the rare ceiling (the finished item you craft toward):
-        # a 2-affix magic base has ~4 craftable slots, which is exactly its value.
-        craft_max = MAX_AFFIXES["Rare"]
-        used = int(item.get("affix_count", item.get("mod_count", sat_units)))
-        free = max(0, craft_max - used)
-        missing = n - sat
+        craft_max = MAX_AFFIXES["Rare"]      # the finished rare you craft toward
+        free = max(0, craft_max - int(item.get("affix_count", item.get("mod_count", sat_units))))
         if not full:
-            # the missing affixes must be craftable into open prefix/suffix slots of their type
-            if not self._slot_reachable(mods, fams, affix_slots):
-                return None
             if is_magic:
-                # craft base: ≥2 high-tier (≥T2) kept affix slots — partial fungible families
-                # count their present high rolls — with room to craft the rest
-                if self._craft_units(mods, fams, sc.tier_weights) < 2 or free < missing:
+                # a craft base needs ≥2 high-tier (≥T2) kept affixes (only the best 2 are worth it)
+                if self._craft_units(mods, fams, sc.tier_weights) < 2:
                     return None
             elif sat < max(2, math.ceil(sc.partial_threshold * n)):
                 return None
         coverage = sat / n
-
-        # crafting headroom: open slots lift value (open-affix path to a better item)
-        open_premium = 1.0 + sc.open_slot_weight * (free / craft_max if craft_max else 0)
+        # reachability gates the *upgrade* (completion) credit, not the match — a 5/6 with no open
+        # slot for the missing affix is still a good item, it just can't be finished into the rule.
+        reachable = full or self._slot_reachable(mods, fams, affix_slots)
+        completion = coverage + (1.0 - coverage) * (sc.craft_credit if reachable else 0.0)
         mod_score = (tvsum / wsum) if (wsum and sat) else 0.0
-        roll = sc.roll_influence
+        roll = sc.magic_roll_influence if is_magic else sc.roll_influence
         base_factor = self.bases.factor_for(item.get("base"))
-        value = self.value.score * ((1 - roll) + roll * mod_score) * base_factor * coverage * open_premium
-        value = max(0.0, min(1.0, value))
+        quality = self.value.score * ((1 - roll) + roll * mod_score) * base_factor
+        contribution = max(0.0, min(1.0, quality * completion))
         return {
-            "archetype": self.id, "value": round(value, 3), "tier": value_to_tier(value),
+            "archetype": self.id, "value": round(contribution, 3),
+            "contribution": round(contribution, 3), "quality": round(quality, 3),
+            "completion": round(completion, 3), "tier": value_to_tier(contribution),
             "coverage": round(coverage, 3), "satisfied": sat, "required": n, "full": full,
-            "free_slots": free, "open_premium": round(open_premium, 3),
+            "reachable": reachable, "free_slots": free,
             "mod_score": round(mod_score, 3), "base_factor": round(base_factor, 3),
             "base_grade": self.bases.grades.get(item.get("base", ""), None),
             "mods": per_mod,
+        }
+
+    def upgrade_target(self, item: dict, families: dict[str, "ModFamily"] | None = None,
+                       affix_slots: dict[str, str] | None = None) -> dict | None:
+        """A *craftable* target: a rule this item isn't a full match for yet but **could be**, by
+        crafting its missing affixes into open slots. Unlike ``score`` (which gates on the partial
+        floor and grades current rolls), this is a forward-looking "what it can become" — surfaced
+        in the popup's upgrade-paths tab. Returns ``None`` unless gates pass, the item already
+        satisfies ≥1 requirement, isn't full, and **every** missing affix fits an open slot of its
+        type. The payload names the missing affixes + open prefix/suffix counts and the rule's
+        finished value/tier (the worth of completing it)."""
+        fams = families or {}
+        if not self._gates_ok(item):
+            return None
+        mods = item.get("mods") or {}
+        n = len(self.requires)
+        if n == 0:
+            return None
+        sat = sum(1 for r in self.requires if self._req_state(r, mods, fams)[0])
+        if sat == 0 or sat == n:                       # nothing to anchor on / already full
+            return None
+        open_p, open_s, missing = self._slot_demand(mods, fams, affix_slots or {})
+        if not self._missing_fits(open_p, open_s, missing):
+            return None
+        return {
+            "archetype": self.id, "name": self.name, "units": n,
+            "satisfied": sat, "required": n,
+            "missing": missing, "open_prefix": open_p, "open_suffix": open_s,
+            "value": round(self.value.score, 3), "tier": self.value.tier,
         }
 
 
@@ -573,8 +617,9 @@ class ArchetypeSet:
         return cls.from_dict(yaml.safe_load(text) or {})
 
     def match(self, item: dict) -> list[dict]:
-        """Enabled archetypes the item matches, scored (with this set's ``scoring``) and
-        ranked by value (desc)."""
+        """Enabled archetypes the item matches, each scored (with this set's ``scoring``) and
+        ranked by contribution (desc). This is the **per-rule** list; ``score_item`` aggregates
+        it into a single headline score."""
         out = []
         for a in self.archetypes:
             if not a.enabled:
@@ -583,4 +628,52 @@ class ArchetypeSet:
             if s is not None:
                 out.append(s)
         out.sort(key=lambda s: s["value"], reverse=True)
+        return out
+
+    def score_item(self, item: dict) -> dict:
+        """Aggregate every matching rule into one headline score + the per-rule breakdown.
+
+        ``overall`` is **peak-dominated**: the single best rule's contribution is the floor (an
+        exact match to a complex 5/6-unit pattern is top-tier on its own), and *additional
+        distinct* matches add a capped ``breadth`` bonus on top — so a universal base matching
+        many rules outranks one with a single upgrade path, but breadth can never overtake a
+        strong peak. ``overall = peak + (1-peak)·breadth``, breadth ∈ [0, ``breadth_cap``], with
+        each extra rule weighted by its **novelty** (the share of its requirement units not
+        already covered by a higher-ranked match) so near-duplicate rules don't inflate it.
+
+        Returns ``{"overall", "peak", "breadth", "matches"}`` (``matches`` is the ranked
+        per-rule list from ``match``); an item that matches nothing scores ``overall`` 0."""
+        by_id = {a.id: a for a in self.archetypes}
+        matches = self.match(item)
+        if not matches:
+            return {"overall": 0.0, "peak": 0.0, "breadth": 0.0, "matches": []}
+        peak = matches[0]["contribution"]
+        seen: set[str] = set()
+        top = by_id.get(matches[0]["archetype"])
+        if top is not None:
+            seen.update(top.signature())
+        breadth = 0.0
+        for m in matches[1:]:
+            a = by_id.get(m["archetype"])
+            units = set(a.signature()) if a is not None else set()
+            novelty = (len(units - seen) / len(units)) if units else 0.0
+            breadth += novelty * m["contribution"]
+            seen |= units
+        breadth = min(self.scoring.breadth_cap, breadth)
+        overall = peak + (1.0 - peak) * breadth
+        return {"overall": round(overall, 3), "peak": round(peak, 3),
+                "breadth": round(breadth, 3), "matches": matches}
+
+    def upgrade_targets(self, item: dict) -> list[dict]:
+        """Enabled rules this item could be **crafted into** (every missing affix fits an open
+        slot of its type) but isn't a full match for yet — the popup's *upgrade paths*. Ranked by
+        finished ``value`` then unit count, so the richest 5/6–6/6 targets lead."""
+        out = []
+        for a in self.archetypes:
+            if not a.enabled:
+                continue
+            t = a.upgrade_target(item, self.mod_families, self.affix_slots)
+            if t is not None:
+                out.append(t)
+        out.sort(key=lambda t: (t["value"], t["units"]), reverse=True)
         return out

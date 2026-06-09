@@ -94,22 +94,26 @@ def test_elemental_res_family_matches_any_elements():
     assert chk.check(fc)[0].rule_name == chk.check(cl)[0].rule_name
 
 
-def test_checker_surfaces_multiple_reasons_with_coverage():
+def test_checker_surfaces_overall_headline_then_per_rule():
     chk = ArchetypeSetChecker(ArchetypeSet.loads(ASET_YAML))
     res = chk.check(boots_item())
-    assert res and "·" in res[0].explanation
-    # the coverage tag is present (full match here)
-    assert res[0].explanation.rstrip().endswith("full")
+    # res[0] is the aggregate headline (carries the overall score); per-rule reasons follow.
+    assert res[0].rule_name == "archetype_set" and res[0].score is not None
+    assert res[0].explanation.startswith("Archetype ")
+    assert res[1].rule_name == "archetype_set:boots-msl" and res[1].score is None
+    # the per-rule reason carries the coverage tag (full match here)
+    assert "·" in res[1].explanation and res[1].explanation.rstrip().endswith("full")
 
 
 def test_checker_flags_and_grades():
     chk = ArchetypeSetChecker(ArchetypeSet.loads(ASET_YAML))
     res = chk.check(boots_item())
-    assert len(res) == 1
-    assert res[0].rule_name == "archetype_set:boots-msl"
-    assert res[0].explanation.startswith("Movement + Life · ")
+    assert len(res) == 2                                   # headline + the one matching rule
+    assert res[0].rule_name == "archetype_set"
+    assert res[1].rule_name == "archetype_set:boots-msl"
+    assert res[1].explanation.startswith("Movement + Life · ")
 
-    # a worse base scores lower than the A base (graded), same mods
+    # a worse base scores lower than the A base (graded), same mods — compare the overall headline
     import re
     val = lambda r: float(re.search(r"\(([\d.]+)\)", r[0].explanation).group(1))
     assert val(chk.check(boots_item(base="Stripped Boots"))) > \
@@ -197,6 +201,60 @@ def test_explain_breakdown_has_per_affix_grading():
     ms = next(r for r in m["requires"] if r.get("key") == MS_KEY)
     assert ms["magnitude"] == 35.0 and ms["weight"] == 0.9 and ms["tier_value"] == 1.0
     assert b["item"]["mods"][MS_KEY] == 35.0   # debug payload present
+
+
+def test_explain_exposes_overall_peak_breadth_and_contribution():
+    chk = ArchetypeSetChecker(ArchetypeSet.loads(ASET_YAML))
+    b = chk.explain(boots_item())
+    assert b["overall"] == b["score"] and b["tier"]
+    assert b["peak"] == b["overall"] and b["breadth"] == 0.0   # single rule → no breadth bonus
+    m = b["matches"][0]
+    for k in ("contribution", "completion", "quality", "reachable", "coverage"):
+        assert k in m
+
+
+FIRE_KEY = mod_key("+40% to Fire Resistance")
+
+_TARGET_YAML = f"""
+meta: {{league: test}}
+mod_families: {{}}
+base_families: {{}}
+affix_slots: {{"{MS_KEY}": prefix, "{LIFE_KEY}": prefix, "{FIRE_KEY}": suffix}}
+archetypes:
+  - id: boots-msl-fire
+    name: Movement + Life + Fire
+    item_class: Boots
+    rarity: [Rare]
+    requires:
+      - {{phrase: ms, mod: "{MS_KEY}", mag: {{weight: 1, bands: [{{tier: T1, min: 30}}]}}}}
+      - {{phrase: life, mod: "{LIFE_KEY}", mag: {{weight: 1, bands: [{{tier: T1, min: 90}}]}}}}
+      - {{phrase: fire, mod: "{FIRE_KEY}", mag: {{weight: 1, bands: [{{tier: T1, min: 40}}]}}}}
+    bases: {{mode: baseless}}
+    value: {{score: 0.8, tier: S}}
+"""
+
+
+def test_explain_includes_craftable_upgrade_targets():
+    chk = ArchetypeSetChecker(ArchetypeSet.loads(_TARGET_YAML))
+    b = chk.explain(boots_item())   # MS + life present, fire (suffix) missing but open
+    assert "targets" in b
+    t = next(t for t in b["targets"] if t["archetype"] == "boots-msl-fire")
+    assert t["satisfied"] == 2 and t["required"] == 3 and t["tier"] == "S"
+    miss = t["missing"]
+    assert len(miss) == 1 and miss[0]["kind"] == "suffix" and t["open_suffix"] >= 1
+
+
+def test_set_archetype_enabled_persists_without_reeval(tmp_path):
+    (tmp_path / "rules.toml").write_text(_RULES, encoding="utf-8")
+    store = Store(str(tmp_path / "t.db"))
+    ev = Evaluator(store, rules_path=str(tmp_path / "rules.toml"))
+    ev.upload_archetype_set(ASET_YAML)
+    assert ev.set_archetype_enabled("boots-msl", False) is True
+    assert ev.archetype_set().archetypes[0].enabled is False     # persisted + reloaded
+    assert ev.set_archetype_enabled("does-not-exist", True) is False
+    assert ev.set_archetype_enabled("boots-msl", True) is True    # re-enable
+    assert ev.archetype_set().archetypes[0].enabled is True
+    store.close()
 
 
 def test_store_score_roundtrip_and_sort(tmp_path):
