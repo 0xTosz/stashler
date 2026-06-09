@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+<div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;
+            padding:8px 10px; border:1px solid #2c5436; border-radius:6px; background:#16241a;">
+  <strong>Scoring feedback</strong>
+  <span class="muted">{{ feedback_count }} note{{ '' if feedback_count == 1 else 's' }} stored locally</span>
+  <span style="flex:1"></span>
+  <a href="{{ url_for('feedback_export') }}">Export .txt</a>
+  <form method="post" action="{{ url_for('feedback_clear') }}" style="display:inline"
+        onsubmit="return confirm('Clear all {{ feedback_count }} stored feedback note(s)? This cannot be undone.');">
+    <button type="submit" {{ 'disabled' if feedback_count == 0 }}>Clear all</button>
+  </form>
+</div>
+<p class="muted" style="margin:0 0 14px">Add notes per item on the <a href="{{ url_for('queue') }}">queue</a>;
+  export them here as one file to share, then clear before the next round.</p>
+
 <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
   <strong>Query log</strong>
   <span class="muted">{{ count }} most-recent entries (oldest first)</span>

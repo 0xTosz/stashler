@@ -12,6 +12,26 @@ def make_record(h="abc", name="Test Item", rarity="Rare"):
     )
 
 
+def test_feedback_upsert_snapshot_and_clear(tmp_path):
+    store = Store(str(tmp_path / "t.db"))
+    store.insert_item(make_record(h="h1", name="Dragon Edge", rarity="Rare"))
+    # A note is stored once per item and snapshots the item's name/rarity.
+    assert store.set_feedback("h1", "  overrated  ") is True
+    assert store.count_feedback() == 1
+    assert store.feedback_notes() == {"h1": "overrated"}          # trimmed, keyed by hash
+    rec = store.feedback_records()[0]
+    assert rec["item_name"] == "Dragon Edge" and rec["rarity"] == "Rare"
+    # Re-saving the same item upserts (no dupe); a blank note clears it.
+    assert store.set_feedback("h1", "actually fine") is True
+    assert store.count_feedback() == 1 and store.feedback_notes()["h1"] == "actually fine"
+    assert store.set_feedback("h1", "   ") is False and store.count_feedback() == 0
+    # Unknown item → not stored; clear_feedback wipes everything.
+    assert store.set_feedback("ghost", "x") is False
+    store.set_feedback("h1", "note again")
+    assert store.clear_feedback() == 1 and store.count_feedback() == 0
+    store.close()
+
+
 def test_insert_is_append_only(tmp_path):
     store = Store(str(tmp_path / "t.db"))
     assert store.insert_item(make_record()) is True

@@ -98,6 +98,20 @@ CREATE TABLE IF NOT EXISTS evaluations (
     evaluated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_eval_flagged_seen ON evaluations(flagged, seen);
+
+-- TEMPORARY: local-only user feedback on scoring. One note per item (upsert by hash); snapshots
+-- the item (raw_json + name/type/rarity/score) so the export stays complete even after the item is
+-- cleared. Exported as a single text file and wiped between feedback rounds (no dupes).
+CREATE TABLE IF NOT EXISTS feedback (
+    item_hash  TEXT PRIMARY KEY,
+    note       TEXT NOT NULL,
+    item_name  TEXT,
+    type_line  TEXT,
+    rarity     TEXT,
+    score      REAL,
+    raw_json   TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -421,6 +435,60 @@ class Store:
                 "WHERE flagged = 1 AND seen = 0",
                 (utc_now_iso(),),
             )
+            self._conn.commit()
+            return cur.rowcount
+
+    # --- scoring feedback (TEMPORARY, local-only) -----------------------
+
+    def set_feedback(self, item_hash: str, note: str) -> bool:
+        """Upsert a local scoring-feedback note for one item (one note per item). A blank note
+        deletes any existing note. Snapshots the item (name/type/rarity/score/raw_json) so the
+        export is self-contained. Returns True if a note is now stored, False if cleared/unknown."""
+        note = (note or "").strip()
+        with self._lock:
+            if not note:
+                self._conn.execute("DELETE FROM feedback WHERE item_hash = ?", (item_hash,))
+                self._conn.commit()
+                return False
+            row = self._conn.execute(
+                "SELECT i.item_name, i.type_line, i.rarity, i.raw_json, e.score "
+                "FROM items i LEFT JOIN evaluations e ON e.hash = i.hash WHERE i.hash = ?",
+                (item_hash,),
+            ).fetchone()
+            if row is None:
+                return False
+            self._conn.execute(
+                "INSERT INTO feedback(item_hash, note, item_name, type_line, rarity, score, "
+                "raw_json, created_at) VALUES (?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(item_hash) DO UPDATE SET note = excluded.note, score = excluded.score, "
+                "raw_json = excluded.raw_json, created_at = excluded.created_at",
+                (item_hash, note, row["item_name"], row["type_line"], row["rarity"],
+                 row["score"], row["raw_json"], utc_now_iso()),
+            )
+            self._conn.commit()
+            return True
+
+    def feedback_notes(self) -> dict[str, str]:
+        """{item_hash: note} for pre-filling the queue's per-item fields."""
+        with self._lock:
+            return {r["item_hash"]: r["note"]
+                    for r in self._conn.execute("SELECT item_hash, note FROM feedback")}
+
+    def feedback_records(self) -> list[sqlite3.Row]:
+        """All stored feedback rows (oldest first) for the export."""
+        with self._lock:
+            return self._conn.execute(
+                "SELECT item_hash, note, item_name, type_line, rarity, score, raw_json, created_at "
+                "FROM feedback ORDER BY created_at"
+            ).fetchall()
+
+    def count_feedback(self) -> int:
+        with self._lock:
+            return int(self._conn.execute("SELECT COUNT(*) AS n FROM feedback").fetchone()["n"])
+
+    def clear_feedback(self) -> int:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM feedback")
             self._conn.commit()
             return cur.rowcount
 

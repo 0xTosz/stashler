@@ -8,11 +8,11 @@ import os
 import sys
 import time
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 
 from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
 from ..evaluate.archetype_model import value_to_tier
-from ..evaluate.itemdata import stash_regex
+from ..evaluate.itemdata import clean_mod_text, stash_regex
 from .itemcard import build_card
 
 PAGE_SIZE = 50
@@ -66,6 +66,32 @@ def _checker_chips(results: list[dict], score: float | None) -> list[dict]:
             chip["text"] = f"{len(hits)} match" + ("" if len(hits) == 1 else "es")
         chips.append(chip)
     return chips
+
+
+def _format_feedback(records) -> str:
+    """TEMP: render stored scoring-feedback rows into one analyzable text blob. Each record carries
+    a short ref (item hash prefix), the item summary, the user's note, its mod lines, and the full
+    raw fetch JSON so nothing is lost."""
+    blocks = []
+    for r in records:
+        ref = (r["item_hash"] or "")[:8]
+        name, base, rarity = r["item_name"] or "", r["type_line"] or "", r["rarity"] or "?"
+        score = f"{r['score']:.3f}" if r["score"] is not None else "—"
+        title = (f"{name} ({base})" if name and base else (name or base or "(unnamed)"))
+        lines = [f"### {ref}  {title}  [{rarity} · score {score}]", f"note: {r['note']}"]
+        try:
+            item = (json.loads(r["raw_json"]) or {}).get("item") or {}
+            mods = [clean_mod_text(m) for m in (item.get("explicitMods") or [])]
+            if mods:
+                lines.append("mods: " + " | ".join(mods))
+        except (ValueError, TypeError):
+            pass
+        lines.append(f"hash: {r['item_hash']}")
+        lines.append(f"raw: {r['raw_json'] or ''}")
+        blocks.append("\n".join(lines))
+    header = (f"# Stashler scoring feedback — {len(records)} record(s)\n"
+              "# per record: ### <ref> <item> [<rarity> · score] / note / mods / hash / raw(json)\n\n")
+    return header + "\n\n".join(blocks) + ("\n" if blocks else "(no feedback recorded)\n")
 
 
 def _apply_archetype_edits(aset, form) -> None:
@@ -272,11 +298,13 @@ def create_app(stasher) -> Flask:
             show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, sort=sort,
             rarities=rarities, checkers=checkers,
         )
+        notes = store.feedback_notes()  # TEMP: local scoring-feedback notes, keyed by item hash
         items = []
         for r in rows:
             d = dict(r)
             d["score"] = r["score"]
             d["score_tier"] = value_to_tier(r["score"]) if r["score"] is not None else None
+            d["feedback"] = notes.get(r["hash"], "")
             try:
                 results = json.loads(r["results"]) if r["results"] else []
             except (ValueError, TypeError):
@@ -460,7 +488,30 @@ def create_app(stasher) -> Flask:
             if r["detail"]:
                 tail += f"  | {r['detail']}"
             lines.append(head + tail)
-        return render_template("log.html", text="\n".join(lines), count=len(rows))
+        return render_template("log.html", text="\n".join(lines), count=len(rows),
+                               feedback_count=store.count_feedback())
+
+    # --- scoring feedback (TEMPORARY) -----------------------------------
+    @app.route("/api/feedback", methods=["POST"])
+    def api_feedback():
+        data = request.get_json(silent=True) or {}
+        item_hash = (data.get("hash") or "").strip()
+        if not item_hash:
+            return jsonify({"ok": False, "error": "missing hash"}), 400
+        stored = store.set_feedback(item_hash, data.get("note") or "")
+        return jsonify({"ok": True, "stored": stored, "count": store.count_feedback()})
+
+    @app.route("/feedback/export")
+    def feedback_export():
+        text = _format_feedback(store.feedback_records())
+        fname = f"stashler-feedback-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        return Response(text, mimetype="text/plain; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+    @app.route("/feedback/clear", methods=["POST"])
+    def feedback_clear():
+        store.clear_feedback()
+        return redirect(url_for("log"))
 
     @app.route("/api/leagues")
     def api_leagues():

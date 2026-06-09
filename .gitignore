@@ -28,6 +28,7 @@ ninja_doc.md
 resp.json
 stashler.png
 /None
+stashler-feedback-*.txt
 
 # Python
 __pycache__/
