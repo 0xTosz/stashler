@@ -11,11 +11,14 @@ class CheckResult:
     """One reason an item was flagged.
 
     ``rule_name`` identifies which user rule fired (for per-rule breakdowns);
-    ``explanation`` is the human-readable line shown in the review queue.
+    ``explanation`` is the human-readable line shown in the review queue. ``score`` is an
+    optional 0..1 graded value (the archetype_set checker sets it; binary checkers leave it
+    None) — the item's overall score is the max across results.
     """
 
     rule_name: str
     explanation: str
+    score: float | None = None
 
 
 @runtime_checkable

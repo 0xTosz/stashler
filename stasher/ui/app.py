@@ -11,10 +11,53 @@ import time
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
+from ..evaluate.archetype_model import value_to_tier
 from ..evaluate.itemdata import stash_regex
 from .itemcard import build_card
 
 PAGE_SIZE = 50
+
+
+def _apply_archetype_edits(aset, form) -> None:
+    """Apply the Rules card-editor form onto a loaded ArchetypeSet (in place)."""
+    def fnum(key):
+        v = form.get(key)
+        try:
+            return float(v) if v not in (None, "") else None
+        except ValueError:
+            return None
+
+    ri = fnum("scoring.roll_influence")
+    if ri is not None:
+        aset.scoring.roll_influence = max(0.0, min(1.0, ri))
+    for t in ("T1", "T2", "T3", "below"):
+        v = fnum(f"scoring.tier.{t}")
+        if v is not None:
+            aset.scoring.tier_weights[t] = max(0.0, min(1.0, v))
+    pt = fnum("scoring.partial_threshold")
+    if pt is not None:
+        aset.scoring.partial_threshold = max(0.0, min(1.0, pt))
+    osw = fnum("scoring.open_slot_weight")
+    if osw is not None:
+        aset.scoring.open_slot_weight = max(0.0, min(1.0, osw))
+
+    for a in aset.archetypes:
+        a.enabled = form.get(f"arch.{a.id}.enabled") == "on"
+        sc = fnum(f"arch.{a.id}.score")
+        if sc is not None:
+            a.value.score = max(0.0, min(1.0, sc))
+            a.value.tier = value_to_tier(a.value.score)
+        for i, r in enumerate(a.requires):
+            w = fnum(f"arch.{a.id}.w.{i}")
+            if w is not None:
+                r.weight = max(0.0, min(1.0, w))
+        if a.bases.mode == "graded":
+            for bi, base in enumerate(list(a.bases.grades)):
+                g = form.get(f"arch.{a.id}.base.{bi}")
+                if g in ("S", "A", "B", "C", "D"):
+                    a.bases.grades[base] = g
+                elif g == "":
+                    a.bases.grades.pop(base, None)
 
 
 def _ui_dir() -> str:
@@ -33,6 +76,11 @@ def create_app(stasher) -> Flask:
         template_folder=os.path.join(ui, "templates"),
         static_folder=os.path.join(ui, "static"),
     )
+    # Archetype-set / filter uploads post the file contents as a form field. Werkzeug 3.1 caps
+    # form-field memory at 500 KB by default; a full mined archetype set is ~1 MB, so raise the
+    # limits (these are local, single-user requests).
+    app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
     store = stasher.store
     worker = stasher.worker()
     # Resume the auto-refresh loop if it was on last session.
@@ -90,6 +138,7 @@ def create_app(stasher) -> Flask:
                 "price": price,
                 "flagged": bool(r["flagged"]),
                 "reasons": reasons,
+                "score": r["score"],
                 "listed": r["listed_at"] or "",
                 "fetched": r["fetched_at"] or "",
             })
@@ -108,17 +157,20 @@ def create_app(stasher) -> Flask:
             reasons = json.loads(row["reasons"]) if row["reasons"] else []
         except (ValueError, TypeError):
             reasons = []
-        card = build_card(entry.get("item") or {})
+        item = entry.get("item") or {}
+        card = build_card(item)
         listing = entry.get("listing") or {}
         return render_template(
             "record_detail.html", c=card, reasons=reasons,
             whisper=listing.get("whisper"),
+            score_breakdown=stasher.evaluator.explain_score(item),
         )
 
     @app.route("/queue")
     def queue():
         show_all = request.args.get("all") == "1"
-        sort = "matches" if request.args.get("sort") == "matches" else "recent"
+        sort = request.args.get("sort")
+        sort = sort if sort in ("matches", "score") else "recent"
         page = max(1, request.args.get("page", 1, type=int))
         total = store.count_queue(show_all)
         pages = max(1, math.ceil(total / PAGE_SIZE))
@@ -129,6 +181,8 @@ def create_app(stasher) -> Flask:
         items = []
         for r in rows:
             d = dict(r)
+            d["score"] = r["score"]
+            d["score_tier"] = value_to_tier(r["score"]) if r["score"] is not None else None
             try:
                 d["reasons_list"] = json.loads(r["reasons"]) if r["reasons"] else []
             except (ValueError, TypeError):
@@ -183,6 +237,7 @@ def create_app(stasher) -> Flask:
             rules_text=rules_text if rules_text is not None else evaluator.rules_text(),
             filter_enabled=filter_enabled,
             filter_text=filter_text if filter_text is not None else filter_disk,
+            archetype_set_enabled=evaluator.archetype_set_is_enabled(),
             rules_error=None,
             rules_message=None,
         )
@@ -223,6 +278,54 @@ def create_app(stasher) -> Flask:
             f"{summary['flagged']} flagged."
         )
         return _render_settings(rules_message=message)
+
+    @app.route("/settings/archetype_set_enabled", methods=["POST"])
+    def settings_archetype_set_enabled():
+        on = request.form.get("enabled") == "on"
+        stasher.evaluator.set_archetype_set_enabled(on)
+        stasher.reevaluate_all(force=True)
+        return redirect(url_for("settings", saved=1))
+
+    def _render_rules(**extra):
+        ev = stasher.evaluator
+        ctx = dict(aset=ev.archetype_set(), enabled=ev.archetype_set_is_enabled(),
+                   rules_error=None, rules_message=None)
+        ctx.update(extra)
+        return render_template("rules.html", **ctx)
+
+    def _reeval_msg() -> str:
+        summary = stasher.reevaluate_all(force=True)
+        return f"Saved · re-evaluated {summary['evaluated']} items, {summary['flagged']} flagged."
+
+    @app.route("/rules")
+    def rules():
+        return _render_rules()
+
+    @app.route("/rules/save", methods=["POST"])
+    def rules_save():
+        aset = stasher.evaluator.archetype_set()
+        if aset is None:
+            return _render_rules(rules_error="No archetype set loaded — upload one first.")
+        _apply_archetype_edits(aset, request.form)
+        stasher.evaluator.save_archetype_set(aset)
+        return _render_rules(rules_message=_reeval_msg())
+
+    @app.route("/rules/upload", methods=["POST"])
+    def rules_upload():
+        text = request.form.get("archetype_set_text", "")
+        if not text.strip():
+            return _render_rules(rules_error="Nothing to upload.")
+        try:
+            stasher.evaluator.upload_archetype_set(text)
+        except ValueError as exc:
+            return _render_rules(rules_error=str(exc))
+        return _render_rules(rules_message="Uploaded · " + _reeval_msg())
+
+    @app.route("/rules/restore", methods=["POST"])
+    def rules_restore():
+        if not stasher.evaluator.restore_archetype_set_defaults():
+            return _render_rules(rules_error="No default copy to restore (upload a set first).")
+        return _render_rules(rules_message="Restored defaults · " + _reeval_msg())
 
     @app.route("/log")
     def log():

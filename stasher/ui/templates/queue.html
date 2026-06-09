@@ -8,6 +8,8 @@
      class="{{ 'sort-on' if sort != 'matches' else 'muted' }}">newest</a>
   <a href="{{ url_for('queue', all=1 if show_all else None, sort='matches') }}"
      class="{{ 'sort-on' if sort == 'matches' else 'muted' }}">most matches</a>
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort='score') }}"
+     class="{{ 'sort-on' if sort == 'score' else 'muted' }}">best score</a>
   <span style="flex:1"></span>
   {% if show_all %}
     <a href="{{ url_for('queue', sort=sort if sort != 'recent' else None) }}">Hide below-threshold</a>
@@ -23,6 +25,12 @@
   {% include "_item_card.html" %}
 
   <div class="qside">
+    {% if it["score"] is not none %}
+    <div class="score-badge tier-{{ it['score_tier'] }}" title="Archetype score (0–1) · click the item to see the breakdown">
+      <span class="score-tier">{{ it["score_tier"] }}</span>
+      <span class="score-val">{{ '%.2f'|format(it["score"]) }}</span>
+    </div>
+    {% endif %}
     <div class="why">
       <div class="why-h">Flagged · {{ it["reasons_list"]|length }} match{{ '' if it["reasons_list"]|length == 1 else 'es' }}</div>
       {% for reason in it["reasons_list"] %}<div class="reason">{{ reason }}</div>

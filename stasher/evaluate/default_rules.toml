@@ -31,3 +31,8 @@ aggregate = "avg"
 # On by default with the example filter (seeded on first run); edit it in Settings.
 [item_filter]
 enabled = true
+
+# --- archetype_set: data-driven graded archetypes mined from poe.ninja (archetype_miner) ---
+# Enable/disable in Settings; upload + tune the set on the Rules page. No-op until one exists.
+[archetype_set]
+enabled = true

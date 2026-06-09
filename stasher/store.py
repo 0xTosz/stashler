@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     seen         INTEGER NOT NULL DEFAULT 0,
     seen_at      TEXT,
     reasons      TEXT,
+    score        REAL,
     rules_hash   TEXT,
     evaluated_at TEXT NOT NULL
 );
@@ -109,7 +110,14 @@ class Store:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a DB was first created (CREATE IF NOT EXISTS won't)."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(evaluations)")}
+        if "score" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN score REAL")
 
     def close(self) -> None:
         with self._lock:
@@ -174,7 +182,7 @@ class Store:
         with self._lock:
             return self._conn.execute(
                 "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
-                "i.price_currency, i.listed_at, i.fetched_at, e.flagged, e.reasons "
+                "i.price_currency, i.listed_at, i.fetched_at, e.flagged, e.reasons, e.score "
                 "FROM items i LEFT JOIN evaluations e ON e.hash = i.hash "
                 "ORDER BY i.fetched_at DESC"
             ).fetchall()
@@ -211,11 +219,12 @@ class Store:
             self._conn.execute(
                 """
                 INSERT INTO evaluations
-                    (hash, flagged, seen, seen_at, reasons, rules_hash, evaluated_at)
-                VALUES (?, ?, 0, NULL, ?, ?, ?)
+                    (hash, flagged, seen, seen_at, reasons, score, rules_hash, evaluated_at)
+                VALUES (?, ?, 0, NULL, ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET
                     flagged      = excluded.flagged,
                     reasons      = excluded.reasons,
+                    score        = excluded.score,
                     rules_hash   = excluded.rules_hash,
                     evaluated_at = excluded.evaluated_at
                 """,
@@ -223,6 +232,7 @@ class Store:
                     item_hash,
                     1 if evaluation.flagged else 0,
                     reasons,
+                    getattr(evaluation, "score", None),
                     rules_hash,
                     utc_now_iso(),
                 ),
@@ -258,17 +268,16 @@ class Store:
         sql = (
             "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
             "i.price_currency, i.price_type, i.whisper, i.listed_at, i.fetched_at, "
-            "i.raw_json, e.reasons, e.flagged, e.seen, e.seen_at, e.evaluated_at "
+            "i.raw_json, e.reasons, e.score, e.flagged, e.seen, e.seen_at, e.evaluated_at "
             "FROM evaluations e JOIN items i ON i.hash = e.hash"
         )
         if not show_all:
             sql += " WHERE e.flagged = 1"
-        # Seen items always sink to the bottom; within that, by recency or match count.
-        primary = (
-            "json_array_length(COALESCE(e.reasons, '[]')) DESC"
-            if sort == "matches"
-            else "e.evaluated_at DESC"
-        )
+        # Seen items always sink to the bottom; within that, by score, match count, or recency.
+        primary = {
+            "matches": "json_array_length(COALESCE(e.reasons, '[]')) DESC",
+            "score": "(e.score IS NULL) ASC, e.score DESC",
+        }.get(sort, "e.evaluated_at DESC")
         sql += f" ORDER BY e.seen ASC, {primary}, i.fetched_at DESC LIMIT ? OFFSET ?"
         with self._lock:
             return self._conn.execute(sql, (limit, offset)).fetchall()

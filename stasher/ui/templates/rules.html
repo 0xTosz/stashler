@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Archetype rules
+  <span class="{{ 'ok' if enabled else 'muted' }}">({{ 'enabled' if enabled else 'disabled' }})</span>
+</h2>
+<p class="muted">The data-driven graded archetype set (mined by archetype_miner). Tweak values
+  here, Save, and the whole archive is re-scored so you can test the effect. Enable/disable the
+  checker in <a href="{{ url_for('settings') }}">Settings</a>.</p>
+
+{% if rules_error %}<p class="error">⚠ {{ rules_error }}</p>{% endif %}
+{% if rules_message %}<p class="ok">{{ rules_message }}</p>{% endif %}
+
+{# --- upload / restore (separate forms) --- #}
+<div class="rules-actions">
+  <form method="post" action="{{ url_for('rules_upload') }}" id="upload-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <input type="file" id="aset-file" accept=".yaml,.yml,text/yaml,text/plain">
+    <input type="hidden" name="archetype_set_text" id="aset-text">
+    <button type="submit" id="aset-upload-btn" disabled>Upload set</button>
+    <small class="muted">Replaces the working set and the restore-point.</small>
+  </form>
+  {% if aset %}
+  <form method="post" action="{{ url_for('rules_restore') }}" onsubmit="return confirm('Discard your edits and restore the originally-uploaded set?');">
+    <button type="submit">Restore defaults</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not aset %}
+<p class="muted" style="margin-top:18px;">No archetype set loaded. Generate one with
+  <code>archetype_miner</code> and upload its <code>&lt;league&gt;.archetypes.generated.yaml</code>
+  above.</p>
+{% else %}
+
+<form method="post" action="{{ url_for('rules_save') }}">
+  <fieldset class="scoring">
+    <legend class="muted">Scoring (applies to every archetype)</legend>
+    <label>Roll influence
+      <input type="number" name="scoring.roll_influence" min="0" max="1" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.roll_influence) }}">
+      <small class="muted">how much the item's rolled magnitude moves the score (0 = ignore roll, 1 = full)</small>
+    </label>
+    <div class="tierw">Tier weights:
+      {% for t in ['T1','T2','T3','below'] %}
+      <label>{{ t }}
+        <input type="number" name="scoring.tier.{{ t }}" min="0" max="1" step="0.05"
+               value="{{ '%.2f'|format(aset.scoring.tier_weights.get(t, 0)) }}"></label>
+      {% endfor %}
+      <small class="muted">value of a roll at each tier (keep T1 ≫ T2/T3 to reward high rolls)</small>
+    </div>
+    <label>Partial floor
+      <input type="number" name="scoring.partial_threshold" min="0" max="1" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.partial_threshold) }}">
+      <small class="muted">min coverage to flag a partial match (0.6 = 3/4, 4/5); below this it's ignored</small>
+    </label>
+    <label>Open-slot bonus
+      <input type="number" name="scoring.open_slot_weight" min="0" max="1" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.open_slot_weight) }}">
+      <small class="muted">how much empty affix slots (crafting headroom) lift value</small>
+    </label>
+  </fieldset>
+
+  <div class="rules-bar">
+    <input id="flt-q" type="text" placeholder="filter by name…">
+    <select id="flt-class"><option value="">Any class</option>
+      {% for c in aset.archetypes|map(attribute='item_class')|reject('none')|unique|sort %}
+        <option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+    <select id="flt-rarity"><option value="">Any rarity</option>
+      <option value="Rare">Rare</option><option value="Magic">Magic</option></select>
+    <label class="chk"><input type="checkbox" id="flt-enabled"> enabled only</label>
+    <span class="muted" id="flt-count"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button type="submit">Save &amp; re-evaluate</button>
+  </div>
+
+  {% for a in aset.archetypes %}
+  <details class="arch-card" data-name="{{ a.name|lower }}" data-class="{{ a.item_class or '' }}"
+           data-rarity="{{ a.rarity|join(',') }}" data-enabled="{{ '1' if a.enabled else '0' }}">
+    <summary>
+      <input type="checkbox" name="arch.{{ a.id }}.enabled" {{ 'checked' if a.enabled }}
+             onclick="event.stopPropagation()">
+      <span class="score-badge tier-{{ a.value.tier }}">{{ a.value.tier }}
+        <span class="score-val">{{ '%.2f'|format(a.value.score) }}</span></span>
+      <strong>{{ a.name }}</strong>
+      <span class="muted">{{ a.item_class or 'any' }} · {{ a.rarity|join('/') }}
+        {%- if a.bases.defence %} · {{ a.bases.defence|join('/') }}{% endif %}</span>
+      <span class="spacer" style="flex:1"></span>
+      {% if a.lineage.status != 'active' %}<span class="status status-{{ a.lineage.status }}">{{ a.lineage.status }}</span>{% endif %}
+      <span class="price" title="from the pricing module (read-only)">
+        {%- if a.price %}{{ '%.1f'|format(a.price.value) }} {{ a.price.currency }}
+          {%- if a.price.inherited %} <span class="muted">(inh.)</span>{% endif %}
+        {%- elif a.lineage.parent_price %}~{{ '%.1f'|format(a.lineage.parent_price.value) }} {{ a.lineage.parent_price.currency }} <span class="muted">(inh.)</span>
+        {%- else %}—{% endif %}</span>
+    </summary>
+    <div class="arch-body">
+      <label class="inline">value score
+        <input type="number" name="arch.{{ a.id }}.score" min="0" max="1" step="0.01"
+               value="{{ '%.3f'|format(a.value.score) }}"></label>
+      <span class="muted">support {{ '%.0f%%'|format(100*(a.provenance.get('support') or 0)) }}
+        · sample {{ a.provenance.get('sample','?') }}</span>
+
+      <table class="reqs">
+        <tr><th>affix</th><th>tiers (magnitude)</th><th class="num">weight</th></tr>
+        {% for r in a.requires %}
+        <tr>
+          <td>{{ r.phrase }}
+            {%- if r.family %} <span class="muted">(any {{ r.min_count }}, fungible)</span>
+            {%- elif r.hybrid %} <span class="muted">(hybrid)</span>{% endif %}</td>
+          <td class="muted">{% for b in r.bands %}{{ b.tier }}≥{{ b.min }}{{ ', ' if not loop.last }}{% endfor %}</td>
+          <td class="num"><input type="number" name="arch.{{ a.id }}.w.{{ loop.index0 }}"
+              min="0" max="1" step="0.05" value="{{ '%.2f'|format(r.weight) }}"></td>
+        </tr>
+        {% endfor %}
+      </table>
+
+      {% if a.bases.mode == 'graded' %}
+      <div class="bases">bases ({{ a.bases.defence|join('/') if a.bases.defence else 'any' }}):
+        {% for base, grade in a.bases.grades.items() %}
+        <label class="base">{{ base }}
+          <select name="arch.{{ a.id }}.base.{{ loop.index0 }}">
+            {% for g in ['S','A','B','C','D'] %}<option value="{{ g }}" {{ 'selected' if g == grade }}>{{ g }}</option>{% endfor %}
+            <option value="">—</option>
+          </select></label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="muted">baseless (base doesn't affect the score)</div>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</form>
+{% endif %}
+
+<style>
+  .rules-actions { display:flex; gap:24px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  fieldset.scoring { border:1px solid #2a2f37; border-radius:6px; padding:10px 12px; margin:10px 0;
+    display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  fieldset.scoring legend { padding:0 6px; }
+  fieldset.scoring input[type=number] { width:64px; }
+  .tierw label { margin-right:8px; }
+  .rules-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; position:sticky; top:0;
+    background:#14161a; padding:8px 0; z-index:3; border-bottom:1px solid #23272e; }
+  .arch-card { border:1px solid #23272e; border-radius:6px; margin:6px 0; background:#15171c; }
+  .arch-card > summary { padding:7px 10px; cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .arch-card .arch-body { padding:8px 12px 12px; border-top:1px solid #23272e; }
+  label.inline { display:inline-flex; gap:6px; align-items:center; margin-right:12px; }
+  label.inline input { width:80px; }
+  table.reqs { width:100%; border-collapse:collapse; margin:6px 0; }
+  table.reqs th, table.reqs td { text-align:left; padding:2px 6px; border-bottom:1px solid #23272e; }
+  table.reqs th { color:#9aa1ab; font-weight:600; } table.reqs .num { text-align:right; }
+  table.reqs input { width:64px; }
+  .bases { display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:13px; }
+  .bases .base { display:inline-flex; gap:4px; align-items:center; }
+  .arch-card .price { font-size:12px; color:#cdb46a; white-space:nowrap; }
+  .arch-card .status { font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+    padding:1px 6px; border-radius:10px; border:1px solid #3a3f48; color:#9aa1ab; }
+  .status-frozen { color:#7fb0e0; border-color:#34536e; }
+  .status-paused { color:#d0a85a; border-color:#6e5a34; }
+  .status-retired { color:#a06a6a; border-color:#6e3434; }
+</style>
+<script>
+  // Upload: read the chosen file into the hidden field; enable the button.
+  const file = document.getElementById('aset-file');
+  if (file) file.onchange = () => {
+    const f = file.files[0]; const btn = document.getElementById('aset-upload-btn');
+    if (!f) { btn.disabled = true; return; }
+    const r = new FileReader();
+    r.onload = () => { document.getElementById('aset-text').value = r.result; btn.disabled = false; };
+    r.readAsText(f);
+  };
+
+  // Client-side filtering of the archetype cards.
+  const cards = Array.from(document.querySelectorAll('.arch-card'));
+  const q = document.getElementById('flt-q'), fc = document.getElementById('flt-class'),
+        fr = document.getElementById('flt-rarity'), fe = document.getElementById('flt-enabled'),
+        cnt = document.getElementById('flt-count');
+  function applyFilter() {
+    if (!cards.length) return;
+    const t = (q.value || '').toLowerCase(), c = fc.value, r = fr.value, en = fe.checked;
+    let shown = 0;
+    cards.forEach(card => {
+      const ok = (!t || card.dataset.name.includes(t))
+        && (!c || card.dataset.class === c)
+        && (!r || card.dataset.rarity.split(',').includes(r))
+        && (!en || card.dataset.enabled === '1');
+      card.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    cnt.textContent = shown + ' / ' + cards.length + ' shown';
+  }
+  [q, fc, fr, fe].forEach(el => el && el.addEventListener('input', applyFilter));
+  applyFilter();
+</script>
+{% endblock %}

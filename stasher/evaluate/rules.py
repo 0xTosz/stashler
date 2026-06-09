@@ -17,6 +17,7 @@ import os
 import tomllib
 from pathlib import Path
 
+from .checks import archetype_set as _archetype_set
 from .checks import item_filter as _item_filter
 from .checks import regex_check as _regex
 from .checks import unique_roll as _unique
@@ -30,6 +31,12 @@ _DEFAULT_FILTER = _PACKAGE_DIR / "default.filter"
 # carries `[item_filter] enabled = true/false`; the file's contents are edited/uploaded
 # from the UI, so no path is exposed to the user.
 FILTER_FILENAME = "stasher.filter"
+
+# The data-driven graded archetype set (from archetype_miner). rules.toml carries
+# `[archetype_set] enabled`; the user uploads + edits it on the Rules page. A pristine copy
+# (.default) is kept beside it so the Rules page can "Restore defaults".
+ARCHETYPE_SET_FILENAME = "archetype_set.yaml"
+ARCHETYPE_SET_DEFAULT_FILENAME = "archetype_set.default.yaml"
 
 
 def resolve_rules_path(
@@ -93,9 +100,46 @@ def parse_rules_text(text: str) -> dict:
         raise ValueError(f"TOML syntax error: {exc}") from exc
 
 
+def set_section_flag(text: str, section: str, key: str, value: bool) -> str:
+    """Set ``[section] key = true/false`` in a rules TOML string (line-based, no TOML writer).
+
+    Replaces the key if present in the section, inserts it if the section exists without it,
+    or appends a new section. Used by the Settings enable/disable toggle."""
+    import re
+
+    val = "true" if value else "false"
+    out: list[str] = []
+    in_sec = done = False
+    for line in normalize_newlines(text).splitlines():
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            if in_sec and not done:           # leaving target section without the key
+                out.append(f"{key} = {val}"); done = True
+            in_sec = s == f"[{section}]"
+            out.append(line); continue
+        if in_sec and not done and re.match(rf"\s*{re.escape(key)}\s*=", line):
+            out.append(f"{key} = {val}"); done = True; continue
+        out.append(line)
+    if in_sec and not done:
+        out.append(f"{key} = {val}"); done = True
+    if not done:
+        out.append(f"[{section}]"); out.append(f"{key} = {val}")
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
 def filter_path(base_dir: Path) -> Path:
     """The single app-managed filter file, beside the rules file."""
     return base_dir / FILTER_FILENAME
+
+
+def archetype_set_path(base_dir: Path) -> Path:
+    """The editable mined ArchetypeSet YAML (the working copy), beside the rules file."""
+    return base_dir / ARCHETYPE_SET_FILENAME
+
+
+def archetype_set_default_path(base_dir: Path) -> Path:
+    """The pristine ArchetypeSet copy captured on upload, for Restore defaults."""
+    return base_dir / ARCHETYPE_SET_DEFAULT_FILENAME
 
 
 def item_filter_enabled(data: dict) -> bool:
@@ -109,6 +153,15 @@ def item_filter_enabled(data: dict) -> bool:
     return False
 
 
+def archetype_set_enabled(data: dict) -> bool:
+    """Whether the mined-ArchetypeSet checker is on (``[archetype_set] enabled = true``).
+    Defaults on when absent; it's a no-op until an ArchetypeSet YAML is uploaded."""
+    aset = data.get("archetype_set")
+    if isinstance(aset, dict):
+        return bool(aset.get("enabled", True))
+    return True
+
+
 def build_checkers(data: dict, base_dir: Path) -> list[Checker]:
     """Build the checker chain from parsed rules. Raises ValueError on a bad rule."""
     checkers: list[Checker] = []
@@ -120,15 +173,19 @@ def build_checkers(data: dict, base_dir: Path) -> list[Checker]:
         fp = filter_path(base_dir)
         if fp.exists() and fp.read_text(encoding="utf-8").strip():
             checkers.append(_item_filter.build_from_file(fp))
+    if archetype_set_enabled(data):
+        ap = archetype_set_path(base_dir)
+        if ap.exists() and ap.read_text(encoding="utf-8").strip():
+            checkers.append(_archetype_set.build_from_file(ap))
     return checkers
 
 
 def hash_rules(rules_bytes: bytes, data: dict, base_dir: Path) -> str:
     hasher = hashlib.sha256()
     hasher.update(rules_bytes)
-    fp = filter_path(base_dir)
-    if fp.exists():
-        hasher.update(fp.read_bytes())
+    for path in (filter_path(base_dir), archetype_set_path(base_dir)):
+        if path.exists():
+            hasher.update(path.read_bytes())
     return hasher.hexdigest()[:16]
 
 

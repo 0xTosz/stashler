@@ -92,6 +92,17 @@
   <div><button type="submit">Save &amp; re-evaluate</button></div>
 </form>
 
+<form method="post" action="{{ url_for('settings_archetype_set_enabled') }}" style="margin-top:14px; max-width:820px;">
+  <label class="chk">
+    <input type="checkbox" name="enabled" {{ 'checked' if archetype_set_enabled }}
+           onchange="this.form.submit()">
+    <strong>Archetype-set checker</strong>
+    <span class="{{ 'ok' if archetype_set_enabled else 'muted' }}">({{ 'enabled' if archetype_set_enabled else 'disabled' }})</span>
+  </label>
+  <div><small class="muted">The data-driven graded archetypes. Upload &amp; tune the set on the
+    <a href="{{ url_for('rules') }}">Rules</a> page.</small></div>
+</form>
+
 <hr style="border:none; border-top:1px solid #23272e; margin:22px 0">
 
 <h2>Danger zone</h2>
@@ -132,14 +143,17 @@
   fieldset legend { padding:0 6px; }
 </style>
 <script>
-  const up = document.getElementById('filter-upload');
-  if (up) up.onchange = () => {
-    const f = up.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => { document.getElementById('filter-text').value = reader.result; };
-    reader.readAsText(f);
-  };
+  function wireUpload(inputId, textId) {
+    const up = document.getElementById(inputId);
+    if (up) up.onchange = () => {
+      const f = up.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => { document.getElementById(textId).value = reader.result; };
+      reader.readAsText(f);
+    };
+  }
+  wireUpload('filter-upload', 'filter-text');
 
   // Populate the League dropdown from the trade site (cached server-side; ↻ forces a
   // refresh). Keeps the current selection even if it's not in the fetched list.

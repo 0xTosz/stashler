@@ -15,6 +15,7 @@ dependencies = [
     "flask>=3.0",
     "pystray>=0.19",
     "pillow>=10.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +29,7 @@ stasher = "stasher.cli:main"
 include = ["stasher*"]
 
 [tool.setuptools.package-data]
-"stasher.evaluate" = ["*.toml", "*.filter"]
+"stasher.evaluate" = ["*.toml", "*.filter", "*.yaml"]
 "stasher.ui" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]

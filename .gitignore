@@ -10,6 +10,21 @@ rules.local.toml
 stashler.ico
 *.spec.bak
 
+# Archetype sets — produced by the separate (private) archetype_miner repo and uploaded
+# in the UI; not source of this repo.
+*.generated.yaml
+archetype_set.yaml
+archetype_set.default.yaml
+
+# Local scratch: loot filters, API/page dumps, screenshots
+FilterBlade/
+*.filter
+ninja_builds.html
+ninja_doc.md
+resp.json
+stashler.png
+/None
+
 # Python
 __pycache__/
 *.py[cod]
