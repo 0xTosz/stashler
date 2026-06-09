@@ -6,6 +6,14 @@
 <p class="muted">The data-driven graded archetype set (mined by archetype_miner). Tweak values
   here, Save, and the whole archive is re-scored so you can test the effect. Enable/disable the
   checker in <a href="{{ url_for('settings') }}">Settings</a>.</p>
+{% if aset and aset.meta %}
+<p class="muted">Loaded ruleset:
+  <strong>{{ aset.meta.get('version') or 'unversioned' }}</strong>
+  {%- if aset.meta.get('leagues') %} · {{ aset.meta['leagues']|join(', ') }}{% endif %}
+  {%- if aset.meta.get('sample_items') %} · {{ '{:,}'.format(aset.meta['sample_items']) }} items{% endif %}
+  · {{ aset.archetypes|length }} archetypes
+  {%- if aset.meta.get('generated_at') %} · generated {{ aset.meta['generated_at'][:10] }}{% endif %}</p>
+{% endif %}
 
 {% if rules_error %}<p class="error">⚠ {{ rules_error }}</p>{% endif %}
 {% if rules_message %}<p class="ok">{{ rules_message }}</p>{% endif %}

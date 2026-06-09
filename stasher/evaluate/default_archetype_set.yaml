@@ -3,6 +3,8 @@
 # defining mod set (with magnitude tier bands + weights) + graded/baseless bases + a
 # meta-proxy value/tier. See archetype_miner/model.py for the schema + match/score.
 meta:
+  version: 2026.06.09
+  generated_at: '2026-06-09T16:07:01+00:00'
   sample_items: 13296
   leagues:
   - runesofaldur
@@ -33,160 +35,160 @@ mod_families:
     - '#% to lightning resistance'
 base_families: {}
 affix_slots:
-  'minions have #% increased critical hit chance': suffix
-  '#% increased maximum energy shield': prefix
-  '#% reduced ignite duration on you': suffix
-  '#% reduced attribute requirements': suffix
-  '#% increased flask life recovery rate': prefix
-  '#% increased flask mana recovery rate': prefix
-  '#% increased critical hit chance for attacks': suffix
-  'gain # mana per enemy killed': suffix
-  '#% increased flammability magnitude': suffix
-  '#% increased light radius': suffix
-  '#% increased spell damage during any flask effect': prefix
-  '#% increased flask charges gained': suffix
-  'gain # life per enemy hit with attacks': suffix
-  '# to level of all projectile skills': suffix
-  'recover #% of maximum life on kill': suffix
-  '#% increased armour and energy shield': prefix
-  'spell skills have #% increased area of effect': both
-  '#% reduced poison duration on you': suffix
-  '#% reduced charm charges used': suffix
-  '# to # physical thorns damage': prefix
-  '#% increased attack speed': suffix
-  '#% more global evasion rating and energy shield': prefix
-  '#% chance to gain onslaught for # seconds on hit': suffix
-  '#% increased presence area of effect': suffix
-  '#% increased charm effect duration': prefix
-  '# to level of all physical spell skills': suffix
-  '# to maximum mana': prefix
-  'minions deal #% increased damage with command skills': prefix
-  '#% increased cold damage': prefix
-  '#% increased critical hit chance': suffix
-  '#% to chaos resistance': suffix
-  '#% to lightning and chaos resistances': suffix
-  '#% increased energy shield recharge rate': suffix
-  '# to strength': suffix
-  'minions have #% increased immobilisation buildup': suffix
-  '#% increased cooldown recovery rate': suffix
-  'adds # to # cold damage': prefix
-  'gain #% of damage as extra lightning damage': prefix
-  'minions have #% increased area of effect': suffix
-  '# to dexterity': suffix
-  '#% of armour also applies to elemental damage': prefix
-  '#% increased evasion and energy shield': prefix
-  '#% increased armour, evasion and energy shield': prefix
-  '#% increased maximum life': prefix
-  'leeches #% of physical damage as life': suffix
-  'adds # to # physical damage': prefix
-  '# to maximum life': prefix
-  '#% of damage taken recouped as mana': suffix
-  '#% to lightning resistance': suffix
-  'adds # to # fire damage to attacks': prefix
-  '#% increased critical spell damage bonus': suffix
-  '# to spirit': prefix
-  '#% increased cast speed': suffix
-  'allies in your presence regenerate # life per second': suffix
-  '# to all attributes': suffix
-  '#% to cold resistance': suffix
-  '# to level of all spell skills': suffix
-  'attacks gain #% of damage as extra cold damage': prefix
-  'allies in your presence have #% to all elemental resistances': suffix
-  '#% increased skill effect duration': suffix
-  'gain #% of damage as extra cold damage': prefix
-  '#% reduced duration of bleeding on you': suffix
-  'minions have #% increased movement speed': suffix
-  'adds # to # physical damage to attacks': prefix
-  '#% to critical hit chance': suffix
-  'gain #% of damage as extra fire damage': prefix
-  'adds # to # fire damage': prefix
-  '#% increased lightning damage': prefix
-  '#% increased critical damage bonus': suffix
-  '#% reduced shock duration on you': suffix
-  '# life regeneration per second': suffix
-  'attacks gain #% of damage as extra lightning damage': prefix
-  '#% chance to pierce an enemy': suffix
-  'minions have #% to all elemental resistances': suffix
-  'minions have #% increased maximum life': both
-  'minions have #% increased critical damage bonus': suffix
-  '#% increased energy shield': prefix
-  '#% surpassing chance to fire an additional arrow': suffix
-  '# to level of all fire spell skills': suffix
-  'allies in your presence have #% increased cast speed': suffix
-  '# to armour': prefix
-  'spells have #% increased cooldown recovery rate': prefix
-  '#% to fire and chaos resistances': suffix
-  'allies in your presence deal #% increased damage': prefix
-  '#% to fire resistance': suffix
-  '#% reduced flask charges used': suffix
-  'attacks gain #% of damage as extra fire damage': prefix
-  '# to intelligence': suffix
-  'grants # life per enemy hit': suffix
-  loads an additional bolt: suffix
-  '#% increased armour and evasion': prefix
-  '#% increased area of effect for attacks': prefix
-  '#% increased damage with bow skills': prefix
-  '#% increased maximum mana': prefix
-  '#% increased effect of arcane surge on you': prefix
-  'causes #% increased stun buildup': suffix
-  'loads # additional bolts': suffix
-  '#% increased effect of your mark skills': suffix
-  '#% of damage is taken from mana before life': both
-  'adds # to # lightning damage': prefix
-  '#% to quality of all skills': suffix
-  '#% increased spell damage': prefix
-  '#% chance to gain a power charge on critical hit': suffix
-  'adds # to # lightning damage to attacks': prefix
-  '# to level of all chaos spell skills': suffix
-  '#% increased elemental damage with attacks': prefix
-  '#% increased curse magnitudes': prefix
-  '#% increased rarity of items found': both
-  '#% increased charm charges gained': suffix
-  '# to maximum energy shield': prefix
-  'leech #% of physical attack damage as mana': suffix
-  'recover #% of maximum mana on kill': suffix
-  '#% increased spirit': prefix
-  '#% increased critical hit chance for spells': suffix
-  '# to level of all lightning spell skills': suffix
-  'minions revive #% faster': prefix
-  '#% reduced freeze duration on you': suffix
-  '# to accuracy rating': prefix
-  '#% increased chance to shock': suffix
-  '#% increased evasion rating': prefix
   '#% increased spell physical damage': prefix
-  '#% reduced chill duration on you': suffix
-  '#% of damage taken recouped as life': suffix
-  '# to level of all minion skills': suffix
-  'leech #% of physical attack damage as life': suffix
-  '#% increased physical damage': prefix
-  '# to level of all cold spell skills': suffix
-  'gain # life per enemy killed': suffix
-  '#% increased projectile speed': prefix
-  '#% increased mana cost efficiency of spells': prefix
   'allies in your presence have #% increased critical damage bonus': suffix
-  '#% increased mana regeneration rate': suffix
-  '#% increased fire damage': prefix
+  '#% increased flask mana recovery rate': prefix
+  '#% increased curse magnitudes': prefix
+  'spell skills have #% increased area of effect': both
+  '#% increased evasion rating': prefix
+  '#% increased attack speed': suffix
+  '#% to lightning resistance': suffix
+  'leech #% of physical attack damage as life': suffix
+  'minions have #% increased critical damage bonus': suffix
+  '# to maximum life': prefix
+  '# to level of all cold spell skills': suffix
+  '#% reduced freeze duration on you': suffix
+  '#% increased lightning damage': prefix
+  '#% increased cooldown recovery rate': suffix
+  '#% increased explicit speed modifier magnitudes': prefix
+  '#% increased charm effect duration': prefix
+  'attacks gain #% of damage as extra cold damage': prefix
+  'adds # to # cold damage to attacks': prefix
+  '#% increased energy shield recharge rate': suffix
+  'gain #% of damage as extra lightning damage': prefix
+  '# to # physical thorns damage': prefix
+  '#% reduced attribute requirements': suffix
+  'allies in your presence have #% increased attack speed': suffix
+  '#% increased critical damage bonus': suffix
+  'recover #% of maximum life on kill': suffix
+  '#% of damage taken recouped as life': suffix
+  'minions have #% increased immobilisation buildup': suffix
+  '#% increased effect of your mark skills': suffix
+  '#% increased cast speed during any flask effect': suffix
   '#% increased freeze buildup': suffix
   '#% increased chaos damage': prefix
-  'minions have #% increased attack and cast speed': suffix
-  '#% to all elemental resistances': suffix
-  '#% increased stun duration': suffix
-  'allies in your presence have #% increased attack speed': suffix
-  'offering skills have #% increased duration': suffix
-  '# to stun threshold': suffix
-  '# to level of all melee skills': suffix
-  '#% to critical damage bonus': suffix
-  'minions deal #% increased damage': prefix
-  'allies in your presence have #% increased critical hit chance': suffix
-  '#% increased movement speed': prefix
-  'leeches #% of physical damage as mana': suffix
-  '#% increased cast speed during any flask effect': suffix
-  '#% increased explicit speed modifier magnitudes': prefix
-  'remnants can be collected from #% further away': suffix
-  'adds # to # cold damage to attacks': prefix
-  '#% increased critical damage bonus for attack damage': suffix
   '#% increased armour': prefix
+  '#% to critical hit chance': suffix
+  '#% increased fire damage': prefix
+  '# to strength': suffix
+  'attacks gain #% of damage as extra fire damage': prefix
+  '#% reduced poison duration on you': suffix
+  'gain # life per enemy hit with attacks': suffix
+  'minions deal #% increased damage with command skills': prefix
+  '# to accuracy rating': prefix
+  '#% increased spirit': prefix
+  'allies in your presence have #% increased critical hit chance': suffix
+  '#% to critical damage bonus': suffix
+  '# to level of all physical spell skills': suffix
+  '#% chance to pierce an enemy': suffix
+  '#% to fire and chaos resistances': suffix
+  '#% increased critical damage bonus for attack damage': suffix
+  '#% increased maximum energy shield': prefix
+  '#% chance to gain onslaught for # seconds on hit': suffix
+  '#% to chaos resistance': suffix
+  'adds # to # lightning damage to attacks': prefix
+  'allies in your presence regenerate # life per second': suffix
+  '#% increased stun duration': suffix
+  '#% increased critical spell damage bonus': suffix
+  '#% increased armour, evasion and energy shield': prefix
+  'gain # mana per enemy killed': suffix
+  '#% increased damage with bow skills': prefix
+  'minions deal #% increased damage': prefix
   '# to evasion rating': prefix
+  '#% increased rarity of items found': both
+  '#% increased light radius': suffix
+  '#% chance to gain a power charge on critical hit': suffix
+  'gain #% of damage as extra fire damage': prefix
+  '#% increased area of effect for attacks': prefix
+  '# to level of all fire spell skills': suffix
+  'gain # life per enemy killed': suffix
+  '# to level of all minion skills': suffix
+  'allies in your presence have #% to all elemental resistances': suffix
+  '# to stun threshold': suffix
+  '#% to fire resistance': suffix
+  'adds # to # physical damage': prefix
+  '# life regeneration per second': suffix
+  '#% increased maximum life': prefix
+  '#% more global evasion rating and energy shield': prefix
+  'adds # to # fire damage to attacks': prefix
+  '#% increased critical hit chance': suffix
+  'minions revive #% faster': prefix
+  '# to level of all spell skills': suffix
+  '#% increased flask charges gained': suffix
+  'minions have #% increased maximum life': both
+  '#% increased projectile speed': prefix
+  'leeches #% of physical damage as life': suffix
+  '#% increased chance to shock': suffix
+  '#% reduced flask charges used': suffix
+  '# to all attributes': suffix
+  '#% increased mana cost efficiency of spells': prefix
+  '#% surpassing chance to fire an additional arrow': suffix
+  '#% increased flask life recovery rate': prefix
+  '#% increased effect of arcane surge on you': prefix
+  '#% to quality of all skills': suffix
+  '#% increased maximum mana': prefix
+  'allies in your presence have #% increased cast speed': suffix
+  'gain #% of damage as extra cold damage': prefix
+  '#% to all elemental resistances': suffix
+  'adds # to # physical damage to attacks': prefix
+  '#% increased critical hit chance for attacks': suffix
+  '#% to cold resistance': suffix
+  '# to level of all projectile skills': suffix
+  'minions have #% to all elemental resistances': suffix
+  '#% increased presence area of effect': suffix
+  '#% reduced charm charges used': suffix
+  '# to level of all lightning spell skills': suffix
+  '#% reduced ignite duration on you': suffix
+  '# to armour': prefix
+  'grants # life per enemy hit': suffix
+  'attacks gain #% of damage as extra lightning damage': prefix
+  '#% increased mana regeneration rate': suffix
+  '#% increased energy shield': prefix
+  '#% increased spell damage during any flask effect': prefix
+  'remnants can be collected from #% further away': suffix
+  '#% increased skill effect duration': suffix
+  '# to dexterity': suffix
+  'minions have #% increased movement speed': suffix
+  'minions have #% increased area of effect': suffix
+  '#% increased elemental damage with attacks': prefix
+  '# to spirit': prefix
+  'loads # additional bolts': suffix
+  loads an additional bolt: suffix
+  '#% reduced shock duration on you': suffix
+  '# to maximum mana': prefix
+  'minions have #% increased attack and cast speed': suffix
+  '#% increased armour and evasion': prefix
+  '#% increased physical damage': prefix
+  'minions have #% increased critical hit chance': suffix
+  '#% of damage taken recouped as mana': suffix
+  'offering skills have #% increased duration': suffix
+  '# to intelligence': suffix
+  'spells have #% increased cooldown recovery rate': prefix
+  'leeches #% of physical damage as mana': suffix
+  '#% to lightning and chaos resistances': suffix
+  'adds # to # fire damage': prefix
+  '# to level of all chaos spell skills': suffix
+  '#% of damage is taken from mana before life': both
+  'adds # to # lightning damage': prefix
+  '#% increased flammability magnitude': suffix
+  '#% increased spell damage': prefix
+  'causes #% increased stun buildup': suffix
+  '#% increased evasion and energy shield': prefix
+  '#% of armour also applies to elemental damage': prefix
+  'allies in your presence deal #% increased damage': prefix
+  '#% increased critical hit chance for spells': suffix
+  '# to maximum energy shield': prefix
+  '#% reduced chill duration on you': suffix
+  'leech #% of physical attack damage as mana': suffix
+  '#% reduced duration of bleeding on you': suffix
+  '#% increased movement speed': prefix
+  '#% increased cast speed': suffix
+  '#% increased armour and energy shield': prefix
+  '#% increased cold damage': prefix
+  '#% increased charm charges gained': suffix
+  'adds # to # cold damage': prefix
+  '# to level of all melee skills': suffix
+  'recover #% of maximum mana on kill': suffix
 mods:
   Helmets:
     '#% to cold resistance':
@@ -539,23 +541,23 @@ mods:
       tiers:
       - min: 1.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.67
         weight: 1000.0
-      - min: 1.0
+      - min: 3.67
         weight: 1000.0
-      - min: 1.0
+      - min: 5.33
         weight: 1000.0
-      - min: 1.0
+      - min: 7.67
         weight: 1000.0
-      - min: 1.0
+      - min: 10.67
         weight: 1000.0
-      - min: 1.0
+      - min: 14.0
         weight: 1000.0
-      - min: 1.0
+      - min: 17.67
         weight: 1000.0
-      - min: 1.0
+      - min: 21.0
         weight: 1000.0
     '#% increased armour':
       desirability: 0.727
@@ -1019,23 +1021,23 @@ mods:
       tiers:
       - min: 1.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.67
         weight: 1000.0
-      - min: 1.0
+      - min: 3.67
         weight: 1000.0
-      - min: 1.0
+      - min: 5.33
         weight: 1000.0
-      - min: 1.0
+      - min: 7.67
         weight: 1000.0
-      - min: 1.0
+      - min: 10.67
         weight: 1000.0
-      - min: 1.0
+      - min: 14.0
         weight: 1000.0
-      - min: 1.0
+      - min: 17.67
         weight: 1000.0
-      - min: 1.0
+      - min: 21.0
         weight: 1000.0
     '#% reduced freeze duration on you':
       desirability: 0.727
@@ -1186,46 +1188,46 @@ mods:
       gen: prefix
       pool: 69500.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 500.0
-      - min: 3.0
+      - min: 4.5
         weight: 500.0
-      - min: 6.0
+      - min: 8.0
         weight: 500.0
-      - min: 9.0
+      - min: 11.5
         weight: 500.0
-      - min: 11.0
+      - min: 15.0
         weight: 500.0
-      - min: 12.0
+      - min: 16.0
         weight: 500.0
-      - min: 13.0
-        weight: 400.0
       - min: 20.0
+        weight: 400.0
+      - min: 26.5
         weight: 300.0
-      - min: 25.0
+      - min: 31.0
         weight: 200.0
     'adds # to # physical damage to attacks':
       desirability: 0.816
       gen: prefix
       pool: 69500.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 2.0
+      - min: 3.0
         weight: 1000.0
-      - min: 4.0
-        weight: 1000.0
-      - min: 5.0
+      - min: 3.5
         weight: 1000.0
       - min: 6.0
         weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 9.0
+        weight: 1000.0
+      - min: 10.5
         weight: 800.0
-      - min: 10.0
+      - min: 14.0
         weight: 600.0
-      - min: 12.0
+      - min: 17.0
         weight: 400.0
     '# to evasion rating':
       desirability: 0.817
@@ -1287,23 +1289,23 @@ mods:
       gen: prefix
       pool: 69500.0
       tiers:
-      - min: 1.0
+      - min: 2.5
         weight: 500.0
-      - min: 1.0
+      - min: 5.5
         weight: 500.0
-      - min: 1.0
+      - min: 8.5
         weight: 500.0
-      - min: 1.0
+      - min: 12.0
         weight: 500.0
-      - min: 1.0
+      - min: 14.5
         weight: 500.0
-      - min: 1.0
+      - min: 17.0
         weight: 500.0
-      - min: 1.0
+      - min: 21.0
         weight: 400.0
-      - min: 1.0
+      - min: 24.5
         weight: 300.0
-      - min: 1.0
+      - min: 30.5
         weight: 200.0
     '# to maximum mana':
       desirability: 0.804
@@ -1356,23 +1358,23 @@ mods:
       gen: prefix
       pool: 69500.0
       tiers:
-      - min: 1.0
+      - min: 1.5
         weight: 500.0
-      - min: 3.0
-        weight: 500.0
-      - min: 5.0
+      - min: 4.0
         weight: 500.0
       - min: 7.0
         weight: 500.0
-      - min: 9.0
+      - min: 9.5
         weight: 500.0
-      - min: 11.0
+      - min: 12.0
         weight: 500.0
-      - min: 14.0
+      - min: 14.5
+        weight: 500.0
+      - min: 18.0
         weight: 400.0
-      - min: 16.0
+      - min: 20.5
         weight: 300.0
-      - min: 21.0
+      - min: 26.5
         weight: 200.0
     '#% increased cast speed':
       desirability: 0.792
@@ -1525,18 +1527,18 @@ mods:
       gen: suffix
       pool: 87100.0
       tiers:
-      - min: 6.0
-        weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 7.67
         weight: 1000.0
     'leech #% of physical attack damage as mana':
       desirability: 0.719
       gen: suffix
       pool: 87100.0
       tiers:
-      - min: 5.0
+      - min: 6.33
         weight: 1000.0
-      - min: 6.0
+      - min: 7.0
         weight: 1000.0
     'gain # mana per enemy killed':
       desirability: 0.719
@@ -1735,23 +1737,23 @@ mods:
       tiers:
       - min: 1.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.67
         weight: 1000.0
-      - min: 1.0
+      - min: 3.67
         weight: 1000.0
-      - min: 1.0
+      - min: 5.33
         weight: 1000.0
-      - min: 1.0
+      - min: 7.67
         weight: 1000.0
-      - min: 1.0
+      - min: 10.67
         weight: 1000.0
-      - min: 1.0
+      - min: 14.0
         weight: 1000.0
-      - min: 1.0
+      - min: 17.67
         weight: 1000.0
-      - min: 1.0
+      - min: 21.0
         weight: 1000.0
     '# to maximum life':
       desirability: 0.795
@@ -3017,23 +3019,23 @@ mods:
       tiers:
       - min: 1.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.67
         weight: 1000.0
-      - min: 1.0
+      - min: 3.67
         weight: 1000.0
-      - min: 1.0
+      - min: 5.33
         weight: 1000.0
-      - min: 1.0
+      - min: 7.67
         weight: 1000.0
-      - min: 1.0
+      - min: 10.67
         weight: 1000.0
-      - min: 1.0
+      - min: 14.0
         weight: 1000.0
-      - min: 1.0
+      - min: 17.67
         weight: 1000.0
-      - min: 1.0
+      - min: 21.0
         weight: 1000.0
     '# to strength':
       desirability: 0.689
@@ -3325,19 +3327,19 @@ mods:
       gen: prefix
       pool: 49600.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 5.0
+      - min: 6.0
         weight: 1000.0
-      - min: 11.0
+      - min: 14.0
         weight: 1000.0
-      - min: 24.0
+      - min: 30.0
         weight: 1000.0
-      - min: 40.0
+      - min: 50.5
         weight: 1000.0
-      - min: 64.0
+      - min: 81.0
         weight: 1000.0
-      - min: 101.0
+      - min: 126.5
         weight: 1000.0
     '# life regeneration per second':
       desirability: 0.631
@@ -3346,21 +3348,21 @@ mods:
       tiers:
       - min: 1.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.0
         weight: 1000.0
-      - min: 1.0
+      - min: 2.67
         weight: 1000.0
-      - min: 1.0
+      - min: 3.67
         weight: 1000.0
-      - min: 1.0
+      - min: 5.33
         weight: 1000.0
-      - min: 1.0
+      - min: 7.67
         weight: 1000.0
-      - min: 1.0
+      - min: 10.67
         weight: 1000.0
-      - min: 1.0
+      - min: 14.0
         weight: 1000.0
-      - min: 1.0
+      - min: 17.67
         weight: 1000.0
     '#% reduced charm charges used':
       desirability: 0.633
@@ -3977,18 +3979,18 @@ mods:
       gen: suffix
       pool: 65983.3
       tiers:
-      - min: 1.0
-        weight: 1000.0
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 3.0
+      - min: 5.5
+        weight: 1000.0
+      - min: 6.25
         weight: 500.0
-      - min: 3.0
-        weight: 250.0
-      - min: 4.0
+      - min: 13.75
+        weight: 1000.0
+      - min: 16.67
         weight: 125.0
+      - min: 23.0
+        weight: 250.0
     '#% to quality of all skills':
       desirability: 0.792
     '#% chance to gain onslaught for # seconds on hit':
@@ -4004,46 +4006,46 @@ mods:
       gen: prefix
       pool: 47410.7
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 500.0
-      - min: 3.0
+      - min: 4.5
         weight: 500.0
-      - min: 6.0
+      - min: 8.0
         weight: 500.0
-      - min: 9.0
+      - min: 11.5
         weight: 500.0
-      - min: 11.0
+      - min: 15.0
         weight: 500.0
-      - min: 12.0
+      - min: 16.0
         weight: 500.0
-      - min: 13.0
-        weight: 400.0
       - min: 20.0
+        weight: 400.0
+      - min: 26.5
         weight: 300.0
-      - min: 25.0
+      - min: 31.0
         weight: 200.0
     'adds # to # physical damage to attacks':
       desirability: 0.702
       gen: prefix
       pool: 47410.7
       tiers:
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 2.0
+      - min: 3.0
         weight: 1000.0
-      - min: 4.0
-        weight: 1000.0
-      - min: 5.0
+      - min: 3.5
         weight: 1000.0
       - min: 6.0
         weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 9.0
+        weight: 1000.0
+      - min: 10.5
         weight: 800.0
-      - min: 10.0
+      - min: 14.0
         weight: 600.0
-      - min: 12.0
+      - min: 17.0
         weight: 400.0
     '#% surpassing chance to fire an additional projectile':
       desirability: 0.7
@@ -4052,23 +4054,23 @@ mods:
       gen: prefix
       pool: 47410.7
       tiers:
-      - min: 1.0
+      - min: 1.5
         weight: 500.0
-      - min: 3.0
-        weight: 500.0
-      - min: 5.0
+      - min: 4.0
         weight: 500.0
       - min: 7.0
         weight: 500.0
-      - min: 9.0
+      - min: 9.5
         weight: 500.0
-      - min: 11.0
+      - min: 12.0
         weight: 500.0
-      - min: 14.0
+      - min: 14.5
+        weight: 500.0
+      - min: 18.0
         weight: 400.0
-      - min: 16.0
+      - min: 20.5
         weight: 300.0
-      - min: 21.0
+      - min: 26.5
         weight: 200.0
     'attacks gain #% of damage as extra lightning damage':
       desirability: 0.692
@@ -4100,9 +4102,9 @@ mods:
       gen: suffix
       pool: 65983.3
       tiers:
-      - min: 6.0
-        weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 7.67
         weight: 1000.0
     'gain # life per enemy hit with attacks':
       desirability: 0.683
@@ -4111,9 +4113,9 @@ mods:
       gen: suffix
       pool: 65983.3
       tiers:
-      - min: 5.0
+      - min: 6.33
         weight: 1000.0
-      - min: 6.0
+      - min: 7.0
         weight: 1000.0
     '# to evasion rating':
       desirability: 0.672
@@ -4240,23 +4242,23 @@ mods:
       gen: prefix
       pool: 47410.7
       tiers:
-      - min: 1.0
+      - min: 2.5
         weight: 500.0
-      - min: 1.0
+      - min: 5.5
         weight: 500.0
-      - min: 1.0
+      - min: 8.5
         weight: 500.0
-      - min: 1.0
+      - min: 12.0
         weight: 500.0
-      - min: 1.0
+      - min: 14.5
         weight: 500.0
-      - min: 1.0
+      - min: 17.0
         weight: 500.0
-      - min: 1.0
+      - min: 21.0
         weight: 400.0
-      - min: 1.0
+      - min: 24.5
         weight: 300.0
-      - min: 1.0
+      - min: 30.5
         weight: 200.0
     '#% increased attack speed':
       desirability: 0.617
@@ -4703,65 +4705,65 @@ mods:
       gen: prefix
       pool: 44755.0
       tiers:
-      - min: 1.0
+      - min: 2.5
         weight: 1000.0
-      - min: 4.0
+      - min: 5.5
         weight: 1000.0
-      - min: 6.0
+      - min: 8.5
         weight: 1000.0
-      - min: 8.0
+      - min: 11.0
         weight: 1000.0
-      - min: 10.0
+      - min: 14.0
         weight: 1000.0
-      - min: 13.0
+      - min: 18.0
         weight: 600.0
-      - min: 16.0
+      - min: 22.0
         weight: 400.0
-      - min: 21.0
+      - min: 28.5
         weight: 200.0
-      - min: 26.0
+      - min: 35.0
         weight: 100.0
     '#% to critical hit chance':
       desirability: 0.655
       gen: suffix
       pool: 52275.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 3.0
+      - min: 5.5
+        weight: 1000.0
+      - min: 6.25
         weight: 500.0
-      - min: 3.0
-        weight: 250.0
-      - min: 4.0
+      - min: 13.75
+        weight: 1000.0
+      - min: 16.67
         weight: 125.0
+      - min: 23.0
+        weight: 250.0
     'adds # to # cold damage':
       desirability: 0.604
       gen: prefix
       pool: 44755.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 800.0
-      - min: 3.0
+      - min: 4.5
         weight: 800.0
-      - min: 6.0
+      - min: 8.0
         weight: 800.0
-      - min: 11.0
+      - min: 14.0
         weight: 800.0
-      - min: 17.0
+      - min: 21.5
         weight: 800.0
-      - min: 22.0
+      - min: 28.0
         weight: 800.0
-      - min: 31.0
+      - min: 39.0
         weight: 480.0
-      - min: 40.0
+      - min: 51.0
         weight: 320.0
-      - min: 55.0
+      - min: 69.0
         weight: 200.0
-      - min: 72.0
+      - min: 91.0
         weight: 80.0
     '#% reduced attribute requirements':
       desirability: 0.579
@@ -4783,11 +4785,11 @@ mods:
       gen: suffix
       pool: 52275.0
       tiers:
-      - min: 5.0
-        weight: 1000.0
-      - min: 6.0
+      - min: 6.33
         weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 7.67
         weight: 1000.0
   Spears:
     '# to accuracy rating':
@@ -4862,23 +4864,23 @@ mods:
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 2.5
         weight: 1000.0
-      - min: 4.0
+      - min: 5.5
         weight: 1000.0
-      - min: 6.0
+      - min: 8.5
         weight: 1000.0
-      - min: 8.0
+      - min: 11.0
         weight: 1000.0
-      - min: 10.0
+      - min: 14.0
         weight: 1000.0
-      - min: 13.0
+      - min: 18.0
         weight: 600.0
-      - min: 16.0
+      - min: 22.0
         weight: 400.0
-      - min: 21.0
+      - min: 28.5
         weight: 200.0
-      - min: 26.0
+      - min: 35.0
         weight: 100.0
     '#% increased elemental damage with attacks':
       desirability: 0.78
@@ -4961,67 +4963,67 @@ mods:
       gen: suffix
       pool: 66650.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 3.0
+      - min: 5.5
+        weight: 1000.0
+      - min: 6.25
         weight: 500.0
-      - min: 3.0
-        weight: 250.0
-      - min: 4.0
+      - min: 13.75
+        weight: 1000.0
+      - min: 16.67
         weight: 125.0
+      - min: 23.0
+        weight: 250.0
     'adds # to # lightning damage':
       desirability: 0.692
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 2.5
         weight: 1100.0
-      - min: 1.0
+      - min: 7.0
         weight: 1100.0
-      - min: 1.0
+      - min: 10.5
         weight: 1100.0
-      - min: 1.0
+      - min: 18.5
         weight: 1100.0
-      - min: 1.0
+      - min: 28.0
         weight: 1100.0
-      - min: 1.0
+      - min: 32.0
         weight: 1100.0
-      - min: 1.0
+      - min: 43.0
         weight: 660.0
-      - min: 1.0
+      - min: 56.0
         weight: 440.0
-      - min: 1.0
+      - min: 79.0
         weight: 275.0
-      - min: 1.0
+      - min: 101.5
         weight: 110.0
     'adds # to # cold damage':
       desirability: 0.691
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 800.0
-      - min: 3.0
+      - min: 4.5
         weight: 800.0
-      - min: 6.0
+      - min: 8.0
         weight: 800.0
-      - min: 11.0
+      - min: 14.0
         weight: 800.0
-      - min: 17.0
+      - min: 21.5
         weight: 800.0
-      - min: 22.0
+      - min: 28.0
         weight: 800.0
-      - min: 31.0
+      - min: 39.0
         weight: 480.0
-      - min: 40.0
+      - min: 51.0
         weight: 320.0
-      - min: 55.0
+      - min: 69.0
         weight: 200.0
-      - min: 72.0
+      - min: 91.0
         weight: 80.0
     'gain # life per enemy killed':
       desirability: 0.688
@@ -5064,25 +5066,25 @@ mods:
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 900.0
-      - min: 4.0
+      - min: 5.5
         weight: 900.0
-      - min: 7.0
+      - min: 10.0
         weight: 900.0
-      - min: 13.0
+      - min: 17.0
         weight: 900.0
-      - min: 20.0
+      - min: 26.0
         weight: 900.0
-      - min: 25.0
+      - min: 31.5
         weight: 900.0
-      - min: 35.0
+      - min: 45.5
         weight: 540.0
-      - min: 47.0
+      - min: 60.5
         weight: 360.0
-      - min: 62.0
+      - min: 81.5
         weight: 225.0
-      - min: 88.0
+      - min: 110.5
         weight: 90.0
     '# to level of all projectile skills':
       desirability: 0.604
@@ -5160,78 +5162,78 @@ mods:
       gen: prefix
       pool: 45430.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 1000.0
-      - min: 5.0
+      - min: 7.5
         weight: 1000.0
-      - min: 8.0
+      - min: 11.5
         weight: 1000.0
-      - min: 11.0
+      - min: 15.5
         weight: 1000.0
-      - min: 14.0
+      - min: 19.5
         weight: 1000.0
-      - min: 19.0
+      - min: 26.0
         weight: 600.0
-      - min: 23.0
+      - min: 31.0
         weight: 400.0
-      - min: 29.0
+      - min: 39.5
         weight: 200.0
-      - min: 37.0
+      - min: 50.0
         weight: 100.0
     'leeches #% of physical damage as mana':
       desirability: 0.627
       gen: suffix
       pool: 66650.0
       tiers:
-      - min: 5.0
-        weight: 1000.0
-      - min: 6.0
+      - min: 6.33
         weight: 1000.0
       - min: 7.0
         weight: 1000.0
-      - min: 8.0
+      - min: 7.67
+        weight: 1000.0
+      - min: 8.33
         weight: 1000.0
     '#% to critical hit chance':
       desirability: 0.588
       gen: suffix
       pool: 66650.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 3.0
+      - min: 5.5
+        weight: 1000.0
+      - min: 6.25
         weight: 500.0
-      - min: 3.0
-        weight: 250.0
-      - min: 4.0
+      - min: 13.75
+        weight: 1000.0
+      - min: 16.67
         weight: 125.0
+      - min: 23.0
+        weight: 250.0
     'adds # to # lightning damage':
       desirability: 0.573
       gen: prefix
       pool: 45430.0
       tiers:
-      - min: 1.0
+      - min: 4.0
         weight: 800.0
-      - min: 1.0
+      - min: 10.0
         weight: 800.0
-      - min: 1.0
+      - min: 16.0
         weight: 800.0
-      - min: 1.0
+      - min: 27.0
         weight: 800.0
-      - min: 1.0
+      - min: 40.5
         weight: 800.0
-      - min: 1.0
+      - min: 47.0
         weight: 800.0
-      - min: 1.0
+      - min: 64.5
         weight: 480.0
-      - min: 1.0
+      - min: 84.5
         weight: 360.0
-      - min: 1.0
+      - min: 120.0
         weight: 200.0
-      - min: 1.0
+      - min: 155.5
         weight: 80.0
     '#% to critical damage bonus':
       desirability: 0.564
@@ -5255,25 +5257,25 @@ mods:
       gen: prefix
       pool: 45430.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 1100.0
-      - min: 6.0
+      - min: 8.0
         weight: 1100.0
-      - min: 11.0
+      - min: 15.0
         weight: 1100.0
-      - min: 19.0
+      - min: 24.5
         weight: 1100.0
-      - min: 30.0
+      - min: 37.5
         weight: 1100.0
-      - min: 39.0
+      - min: 49.0
         weight: 1100.0
-      - min: 56.0
+      - min: 70.0
         weight: 660.0
-      - min: 73.0
+      - min: 92.5
         weight: 440.0
-      - min: 102.0
+      - min: 128.5
         weight: 275.0
-      - min: 135.0
+      - min: 170.0
         weight: 110.0
     '#% increased attack speed':
       desirability: 0.559
@@ -5322,25 +5324,25 @@ mods:
       gen: prefix
       pool: 45430.0
       tiers:
-      - min: 2.0
+      - min: 3.0
         weight: 1000.0
-      - min: 5.0
+      - min: 7.0
         weight: 1000.0
-      - min: 10.0
+      - min: 12.5
         weight: 1000.0
-      - min: 16.0
+      - min: 20.5
         weight: 1000.0
-      - min: 25.0
+      - min: 31.5
         weight: 1000.0
-      - min: 32.0
+      - min: 40.5
         weight: 1000.0
-      - min: 46.0
+      - min: 58.0
         weight: 600.0
-      - min: 60.0
+      - min: 76.0
         weight: 400.0
-      - min: 84.0
+      - min: 105.0
         weight: 250.0
-      - min: 112.0
+      - min: 140.0
         weight: 100.0
     '#% increased stun duration':
       desirability: 0.537
@@ -5844,23 +5846,23 @@ mods:
       gen: prefix
       pool: 33700.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 2.0
+      - min: 3.0
         weight: 1000.0
-      - min: 4.0
-        weight: 1000.0
-      - min: 5.0
+      - min: 3.5
         weight: 1000.0
       - min: 6.0
         weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 9.0
+        weight: 1000.0
+      - min: 10.5
         weight: 800.0
-      - min: 10.0
+      - min: 14.0
         weight: 600.0
-      - min: 12.0
+      - min: 17.0
         weight: 400.0
     '#% increased critical hit chance for attacks':
       desirability: 0.676
@@ -5899,23 +5901,23 @@ mods:
       gen: prefix
       pool: 33700.0
       tiers:
-      - min: 1.0
+      - min: 1.5
         weight: 500.0
-      - min: 3.0
-        weight: 500.0
-      - min: 5.0
+      - min: 4.0
         weight: 500.0
       - min: 7.0
         weight: 500.0
-      - min: 9.0
+      - min: 9.5
         weight: 500.0
-      - min: 11.0
+      - min: 12.0
         weight: 500.0
-      - min: 14.0
+      - min: 14.5
+        weight: 500.0
+      - min: 18.0
         weight: 400.0
-      - min: 16.0
+      - min: 20.5
         weight: 300.0
-      - min: 21.0
+      - min: 26.5
         weight: 200.0
     '# to level of all projectile skills':
       desirability: 0.649
@@ -6023,48 +6025,48 @@ mods:
       gen: prefix
       pool: 44755.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 1000.0
-      - min: 6.0
+      - min: 8.0
         weight: 1000.0
-      - min: 11.0
+      - min: 15.0
         weight: 1000.0
-      - min: 19.0
+      - min: 24.5
         weight: 1000.0
-      - min: 30.0
+      - min: 37.5
         weight: 1000.0
-      - min: 39.0
+      - min: 49.0
         weight: 1000.0
-      - min: 56.0
+      - min: 70.0
         weight: 600.0
-      - min: 73.0
+      - min: 92.5
         weight: 400.0
-      - min: 102.0
+      - min: 128.5
         weight: 250.0
-      - min: 135.0
+      - min: 170.0
         weight: 100.0
     'adds # to # physical damage':
       desirability: 0.677
       gen: prefix
       pool: 44755.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 1000.0
-      - min: 5.0
+      - min: 7.5
         weight: 1000.0
-      - min: 8.0
+      - min: 11.5
         weight: 1000.0
-      - min: 11.0
+      - min: 15.5
         weight: 1000.0
-      - min: 14.0
+      - min: 19.5
         weight: 1000.0
-      - min: 19.0
+      - min: 26.0
         weight: 600.0
-      - min: 23.0
+      - min: 31.0
         weight: 400.0
-      - min: 29.0
+      - min: 39.5
         weight: 200.0
-      - min: 37.0
+      - min: 50.0
         weight: 100.0
     'gain # life per enemy killed':
       desirability: 0.661
@@ -6092,22 +6094,22 @@ mods:
       gen: suffix
       pool: 51625.0
       tiers:
-      - min: 6.0
-        weight: 1000.0
       - min: 7.0
         weight: 1000.0
-      - min: 8.0
+      - min: 7.67
+        weight: 1000.0
+      - min: 8.33
         weight: 1000.0
     'leeches #% of physical damage as mana':
       desirability: 0.599
       gen: suffix
       pool: 51625.0
       tiers:
-      - min: 5.0
-        weight: 1000.0
-      - min: 6.0
+      - min: 6.33
         weight: 1000.0
       - min: 7.0
+        weight: 1000.0
+      - min: 7.67
         weight: 1000.0
   Quarterstaves:
     '# to level of all melee skills':
@@ -6170,18 +6172,18 @@ mods:
       gen: suffix
       pool: 66650.0
       tiers:
-      - min: 1.0
-        weight: 1000.0
-      - min: 1.0
-        weight: 1000.0
       - min: 2.0
         weight: 1000.0
-      - min: 3.0
+      - min: 5.5
+        weight: 1000.0
+      - min: 6.25
         weight: 500.0
-      - min: 3.0
-        weight: 250.0
-      - min: 4.0
+      - min: 13.75
+        weight: 1000.0
+      - min: 16.67
         weight: 125.0
+      - min: 23.0
+        weight: 250.0
     '# to accuracy rating':
       desirability: 0.653
       gen: prefix
@@ -6210,98 +6212,98 @@ mods:
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 1000.0
-      - min: 5.0
+      - min: 7.5
         weight: 1000.0
-      - min: 8.0
+      - min: 11.5
         weight: 1000.0
-      - min: 11.0
+      - min: 15.5
         weight: 1000.0
-      - min: 14.0
+      - min: 19.5
         weight: 1000.0
-      - min: 19.0
+      - min: 26.0
         weight: 600.0
-      - min: 23.0
+      - min: 31.0
         weight: 400.0
-      - min: 29.0
+      - min: 39.5
         weight: 200.0
-      - min: 37.0
+      - min: 50.0
         weight: 100.0
     'adds # to # cold damage':
       desirability: 0.586
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 2.0
+      - min: 3.0
         weight: 900.0
-      - min: 5.0
+      - min: 7.0
         weight: 900.0
-      - min: 10.0
+      - min: 12.5
         weight: 900.0
-      - min: 16.0
+      - min: 20.5
         weight: 900.0
-      - min: 25.0
+      - min: 31.5
         weight: 900.0
-      - min: 32.0
+      - min: 40.5
         weight: 900.0
-      - min: 46.0
+      - min: 58.0
         weight: 540.0
-      - min: 60.0
+      - min: 76.0
         weight: 360.0
-      - min: 84.0
+      - min: 105.0
         weight: 225.0
-      - min: 112.0
+      - min: 140.0
         weight: 90.0
     'adds # to # fire damage':
       desirability: 0.586
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 2.0
+      - min: 3.5
         weight: 800.0
-      - min: 6.0
+      - min: 8.0
         weight: 800.0
-      - min: 11.0
+      - min: 15.0
         weight: 800.0
-      - min: 19.0
+      - min: 24.5
         weight: 800.0
-      - min: 30.0
+      - min: 37.5
         weight: 800.0
-      - min: 39.0
+      - min: 49.0
         weight: 800.0
-      - min: 56.0
+      - min: 70.0
         weight: 480.0
-      - min: 73.0
+      - min: 92.5
         weight: 320.0
-      - min: 102.0
+      - min: 128.5
         weight: 200.0
-      - min: 135.0
+      - min: 170.0
         weight: 80.0
     'adds # to # lightning damage':
       desirability: 0.586
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 4.0
         weight: 1100.0
-      - min: 1.0
+      - min: 10.0
         weight: 1100.0
-      - min: 1.0
+      - min: 16.0
         weight: 1100.0
-      - min: 1.0
+      - min: 27.0
         weight: 1100.0
-      - min: 1.0
+      - min: 40.5
         weight: 1100.0
-      - min: 1.0
+      - min: 47.0
         weight: 1100.0
-      - min: 1.0
+      - min: 64.5
         weight: 660.0
-      - min: 1.0
+      - min: 84.5
         weight: 440.0
-      - min: 1.0
+      - min: 120.0
         weight: 275.0
-      - min: 1.0
+      - min: 155.5
         weight: 110.0
   One Hand Maces:
     '# to accuracy rating':
@@ -6404,25 +6406,25 @@ mods:
       gen: prefix
       pool: 44655.0
       tiers:
-      - min: 1.0
+      - min: 2.0
         weight: 800.0
-      - min: 3.0
+      - min: 4.5
         weight: 800.0
-      - min: 6.0
+      - min: 8.0
         weight: 800.0
-      - min: 11.0
+      - min: 14.0
         weight: 800.0
-      - min: 17.0
+      - min: 21.5
         weight: 800.0
-      - min: 22.0
+      - min: 28.0
         weight: 800.0
-      - min: 31.0
+      - min: 39.0
         weight: 480.0
-      - min: 40.0
+      - min: 51.0
         weight: 320.0
-      - min: 55.0
+      - min: 69.0
         weight: 200.0
-      - min: 72.0
+      - min: 91.0
         weight: 80.0
 archetypes:
 - id: helmets-96818938
@@ -100755,6 +100757,83 @@ archetypes:
     - ele_res>=1
     - ele_res>=2
     defence: any
+- id: rings-486e8c48
+  name: Elemental Resistance + Dexterity + Evasion Rating
+  item_class: Rings
+  rarity:
+  - Rare
+  - Magic
+  requires:
+  - phrase: Elemental Resistance
+    mag:
+      weight: 0.58
+      p50: 36.0
+      p90: 45.0
+      max: 137.0
+      bands:
+      - tier: T1
+        min: 41.0
+      - tier: T2
+        min: 36.0
+      - tier: T3
+        min: 31.0
+    any_of: ele_res
+    min: 2
+  - phrase: to Dexterity
+    mag:
+      weight: 0.594
+      p50: 30.0
+      p90: 33.0
+      max: 46.0
+      bands:
+      - tier: T1
+        min: 31.0
+      - tier: T2
+        min: 28.0
+      - tier: T3
+        min: 25.0
+    mod: '# to dexterity'
+  - phrase: to Evasion Rating
+    mag:
+      weight: 0.856
+      p50: 178.0
+      p90: 224.0
+      max: 277.0
+      bands:
+      - tier: T1
+        min: 205.0
+      - tier: T2
+        min: 178.0
+      - tier: T3
+        min: 144.0
+    mod: '# to evasion rating'
+  bases:
+    mode: graded
+    grades:
+      Unset Ring: A
+      Prismatic Ring: B
+      Topaz Ring: C
+  value:
+    score: 0.651
+    tier: A
+    components:
+      support: 0.002
+      completeness: 0.667
+      rank_weight: 0.967
+      base_concentration: 0.498
+      avg_mod_tier: 0.5
+  relations:
+    subset_of: []
+    superset_of: []
+  provenance:
+    sample: 6
+    support: 0.002
+    units:
+    - '# to dexterity'
+    - '# to evasion rating'
+    - ele_res>=1
+    - ele_res>=2
+    defence: any
 - id: rings-1d32c34d
   name: Elemental Resistance + Cold Damage + Cold damage to Attacks
   item_class: Rings
@@ -100907,83 +100986,6 @@ archetypes:
     units:
     - '# to maximum mana'
     - 'adds # to # cold damage to attacks'
-    - ele_res>=1
-    - ele_res>=2
-    defence: any
-- id: rings-486e8c48
-  name: Elemental Resistance + Dexterity + Evasion Rating
-  item_class: Rings
-  rarity:
-  - Rare
-  - Magic
-  requires:
-  - phrase: Elemental Resistance
-    mag:
-      weight: 0.58
-      p50: 36.0
-      p90: 45.0
-      max: 137.0
-      bands:
-      - tier: T1
-        min: 41.0
-      - tier: T2
-        min: 36.0
-      - tier: T3
-        min: 31.0
-    any_of: ele_res
-    min: 2
-  - phrase: to Dexterity
-    mag:
-      weight: 0.594
-      p50: 30.0
-      p90: 33.0
-      max: 46.0
-      bands:
-      - tier: T1
-        min: 31.0
-      - tier: T2
-        min: 28.0
-      - tier: T3
-        min: 25.0
-    mod: '# to dexterity'
-  - phrase: to Evasion Rating
-    mag:
-      weight: 0.856
-      p50: 178.0
-      p90: 224.0
-      max: 277.0
-      bands:
-      - tier: T1
-        min: 205.0
-      - tier: T2
-        min: 178.0
-      - tier: T3
-        min: 144.0
-    mod: '# to evasion rating'
-  bases:
-    mode: graded
-    grades:
-      Unset Ring: A
-      Prismatic Ring: B
-      Topaz Ring: C
-  value:
-    score: 0.651
-    tier: A
-    components:
-      support: 0.002
-      completeness: 0.667
-      rank_weight: 0.967
-      base_concentration: 0.498
-      avg_mod_tier: 0.5
-  relations:
-    subset_of: []
-    superset_of: []
-  provenance:
-    sample: 6
-    support: 0.002
-    units:
-    - '# to dexterity'
-    - '# to evasion rating'
     - ele_res>=1
     - ele_res>=2
     defence: any
