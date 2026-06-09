@@ -103,6 +103,23 @@
     <a href="{{ url_for('rules') }}">Rules</a> page.</small></div>
 </form>
 
+<form method="post" action="{{ url_for('settings_queue_cutoff') }}" style="margin-top:14px; max-width:820px;">
+  <fieldset style="border:1px solid #2a2f37; border-radius:6px; padding:12px;">
+    <legend class="muted">Queue ruleset score cutoff</legend>
+    <p class="muted" style="margin:0 0 10px;">Hide items the <strong>Ruleset</strong> checker
+      flagged whose archetype score is below this, per rarity. Items also flagged by another
+      checker (filter / regex / unique) always show. Applies to the queue instantly — no
+      re-evaluation needed. <strong>0 = show everything.</strong></p>
+    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <label class="chk">Magic <input type="number" name="magic" min="0" max="1" step="0.05"
+        value="{{ '%.2f'|format(cutoff_magic) }}" style="width:72px"></label>
+      <label class="chk">Rare <input type="number" name="rare" min="0" max="1" step="0.05"
+        value="{{ '%.2f'|format(cutoff_rare) }}" style="width:72px"></label>
+      <button type="submit">Save cutoff</button>
+    </div>
+  </fieldset>
+</form>
+
 <hr style="border:none; border-top:1px solid #23272e; margin:22px 0">
 
 <h2>Danger zone</h2>

@@ -1,0 +1,153 @@
+{# Unified item detail — reused by the queue modal AND the records-page row expansion
+   (/records/<hash>/card). Renders the item card, per-checker chips, non-ruleset reasons, and
+   the archetype score breakdown (Matched + Upgrade-paths tabs with per-rule disable toggles).
+   Edit here once; both surfaces update. Feature-gates for unflagged / no-match records.
+   Context: c, reasons, chips, other_reasons, score_breakdown (b), hash. #}
+{% from "_chips.html" import render_chips %}
+<div class="qcard" style="margin:0;">
+  {% include "_item_card.html" %}
+  <div class="qside">
+    {{ render_chips(chips) }}
+    {% if other_reasons %}
+    <div class="why">
+      <div class="why-h">Also flagged by</div>
+      {% for reason in other_reasons %}<div class="reason">{{ reason }}</div>{% endfor %}
+    </div>
+    {% endif %}
+    {% if not reasons %}<div class="muted">Not flagged by current rules.</div>{% endif %}
+  </div>
+</div>
+
+{% set b = score_breakdown %}
+{% if b and (b.matches or b.targets or b.floor) %}
+{% set has_matches = b.matches|length > 0 %}
+<div class="rp" data-hash="{{ hash }}">
+  <div class="rp-head">
+    <span class="score-badge tier-{{ b.tier }}">
+      <span class="score-tier">{{ b.tier }}</span>
+      <span class="score-val">{{ '%.2f'|format(b.overall) }}</span>
+    </span>
+    <span class="muted">overall = max(peak {{ '%.2f'|format(b.peak) }}
+      {%- if b.breadth > 0 %} + breadth {{ '%.2f'|format(b.breadth) }}{% endif %},
+      rarity-floor {{ '%.2f'|format(b.floor) }})</span>
+  </div>
+  <p class="rp-warn">⚠ Disabling a rule saves immediately but is <em>global</em> — queue scores
+    update only after <a href="{{ url_for('rules') }}">Rules → Re-evaluate archive</a>.</p>
+
+  <div class="rp-tabs">
+    <button class="rp-tab {{ 'on' if has_matches }}" data-tab="matched">Matched ({{ b.matches|length }})</button>
+    <button class="rp-tab {{ 'on' if not has_matches }}" data-tab="targets">Upgrade paths ({{ b.targets|length }})</button>
+  </div>
+
+  {# --- Matched: rules contributing to the score, best first --- #}
+  <div class="rp-pane {{ 'on' if has_matches }}" data-pane="matched">
+    <label class="rp-noslot-row"><input type="checkbox" class="rp-noslot" checked>
+      show matches without open slot</label>
+    {% for m in b.matches %}
+    <details class="rp-rule" {% if not m.full and not m.reachable %}data-noslot="1"{% endif %}>
+      <summary>
+        <input type="checkbox" class="rp-toggle" data-arch-id="{{ m.archetype }}" checked
+               title="Disable this rule (global)" onclick="event.stopPropagation()">
+        <span class="score-badge tier-{{ m.tier }}"><span>{{ m.tier }}</span>
+          <span class="score-val">{{ '%.2f'|format(m.contribution) }}</span></span>
+        <strong>{{ m.name }}</strong>
+        <span class="muted">{{ m.satisfied }}/{{ m.required }}
+          {%- if m.full %} · full
+          {%- elif m.reachable %} · craftable ({{ m.free_slots }} free)
+          {%- else %} · partial · no open slot{% endif %}</span>
+      </summary>
+      <div class="rp-detail">
+        <div class="muted">contribution {{ '%.2f'|format(m.contribution) }} =
+          quality {{ '%.2f'|format(m.quality) }} × completion {{ '%.2f'|format(m.completion) }}
+          <br>quality = archetype {{ '%.2f'|format(m.archetype_score) }}
+          × mod-roll {{ '%.2f'|format(m.mod_score) }} × base {{ '%.2f'|format(m.base_factor) }}
+          {%- if m.base_grade %} (base grade {{ m.base_grade }})
+          {%- elif m.bases_mode == 'baseless' %} (baseless)
+          {%- else %} (off-archetype base){% endif %}</div>
+        <table class="rp-reqs">
+          <tr><th>affix</th><th class="num">rolled</th><th>tier</th><th class="num">weight</th></tr>
+          {% for r in m.requires %}
+          <tr>
+            <td>{{ r.phrase }}{% if r.pool %} <span class="muted">(any {{ r.min_count }}; {{ r.present }} present)</span>{% endif %}</td>
+            <td class="num">{{ r.magnitude if r.magnitude is not none else '—' }}</td>
+            <td class="{{ 'hit' if r.tier_value > 0 else 'miss' }}">{{ '%.2f'|format(r.tier_value) }}{% if r.bands %}
+              <span class="muted">[{% for band in r.bands %}{{ band.tier }}≥{{ band.min }}{{ ', ' if not loop.last }}{% endfor %}]</span>{% endif %}</td>
+            <td class="num">{{ '%.2f'|format(r.weight) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% if m.components %}<div class="muted">components:
+          {% for k, v in m.components.items() %}{{ k }}={{ '%.2f'|format(v) }}{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}
+      </div>
+    </details>
+    {% else %}
+    <p class="muted">No rules matched this item.</p>
+    {% endfor %}
+  </div>
+
+  {# --- Upgrade paths: rules this item could be crafted into --- #}
+  <div class="rp-pane {{ 'on' if not has_matches }}" data-pane="targets">
+    {% for t in b.targets %}
+    <div class="rp-target">
+      <div class="rp-target-head">
+        <input type="checkbox" class="rp-toggle" data-arch-id="{{ t.archetype }}" checked
+               title="Disable this rule (global)">
+        <span class="score-badge tier-{{ t.tier }}"><span>{{ t.tier }}</span>
+          <span class="score-val">{{ '%.2f'|format(t.value) }}</span></span>
+        <strong>{{ t.name }}</strong>
+        <span class="muted rp-target-cov">{{ t.satisfied }}/{{ t.required }} now</span>
+      </div>
+      <table class="rp-missing">
+        <tr><th>missing affix</th><th>slot</th></tr>
+        {% for mm in t.missing %}
+        <tr><td>{{ mm.phrase }}</td>
+          <td>{% if mm.kind %}<span class="rp-slot rp-slot-{{ mm.kind }}">{{ mm.kind }}</span>
+              {%- else %}<span class="muted">any</span>{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      <div class="muted rp-target-foot">{{ t.open_prefix }} open prefix · {{ t.open_suffix }} open suffix</div>
+    </div>
+    {% else %}
+    <p class="muted">No craftable upgrade paths — every reachable rule is already a full match,
+      or the open slots don't fit any rule's missing affixes.</p>
+    {% endfor %}
+  </div>
+
+  <details class="score-bd">
+    <summary>debug · score math</summary>
+    <div class="muted">overall {{ '%.3f'|format(b.overall) }} =
+      max(peak {{ '%.3f'|format(b.peak) }} ⊕ breadth {{ '%.3f'|format(b.breadth) }},
+      rarity-floor {{ '%.3f'|format(b.floor) }})</div>
+    {% if b.rarity and b.rarity.rows %}
+    <div class="muted">rarity floor: Σ counted trophies {{ '%.2f'|format(b.rarity.total) }}
+      → floor {{ '%.3f'|format(b.floor) }}{% if b.rarity.build %} &nbsp;<span class="muted">as “{{ b.rarity.build }}”</span>{% endif %}
+      <br><span class="muted">(trophy = desirability × (amp−1) × tier-quality; only mods that co-occur in one archetype sum — others are surfaced but not added)</span></div>
+    <table>
+      <tr><th>rare mod</th><th class="num">freq</th><th class="num">amp</th><th class="num">desire</th><th class="num">tier-q</th><th class="num">trophy</th><th>counted</th></tr>
+      {% for r in b.rarity.rows %}
+      <tr{% if not r.counted %} class="muted"{% endif %}>
+        <td>{{ r.key }}</td>
+        <td class="num">{{ '%.4f'|format(r.freq) }}</td>
+        <td class="num">{{ '%.2f'|format(r.amp) }}×</td>
+        <td class="num">{{ '%.2f'|format(r.desirability) }}</td>
+        <td class="num">{{ '%.2f'|format(r.tier_quality) }}</td>
+        <td class="num">{{ '%.2f'|format(r.trophy) }}</td>
+        <td>{{ '✓' if r.counted else '— off-build' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<div class="muted">no rare-mod premium (rarity floor 0)</div>{% endif %}
+    {% if b.scoring %}<div class="muted" style="margin-top:6px">knobs:
+      {% for k, v in b.scoring.items() %}{% if v is not mapping %}{{ k }}={{ v }}{{ ' · ' if not loop.last }}{% endif %}{% endfor %}</div>{% endif %}
+  </details>
+  <details class="score-bd">
+    <summary>debug · {{ b.item.mod_count }} affixes · {{ b.item.mods|length }} stat keys</summary>
+    <table>
+      {% for k, v in b.item.mods.items() %}
+      <tr><td>{{ k }}</td><td class="num">{{ v if v is not none else '—' }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+</div>
+{% elif b is not none %}
+<div class="score-bd muted">No archetype matched this item (archetype_set is on, but nothing scored).</div>
+{% endif %}

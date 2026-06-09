@@ -90,6 +90,10 @@
             font-weight: 700; border-radius: 3px; padding: 0 4px; vertical-align: middle; }
     .tier.pre { color: #ff9e80; background: #3a201a; }
     .tier.suf { color: #87c7ff; background: #16303f; }
+    .t-mod .modlines { display: inline-block; vertical-align: top; }
+    .t-mod.hybrid { border-left: 2px solid #2f4a6b; padding-left: 6px; }
+    .t-mod.hybrid .modtext { display: block; }
+    .t-mod.hybrid .tier { vertical-align: top; }
     .t-dps { color: #9aa1ab; font-size: 12px; }
     .qside { flex: none; width: 230px; display: flex; flex-direction: column; gap: 8px; }
     .why-h { color: #9be3a3; font-weight: 700; font-size: 12px; margin-bottom: 5px; }
@@ -137,6 +141,55 @@
     .score-bd .num { text-align: right; font-variant-numeric: tabular-nums; }
     .score-bd .miss { color: #ff8a8a; } .score-bd .hit { color: #9be3a3; }
     .score-bd summary { cursor: pointer; color: #9aa1ab; }
+
+    /* --- per-checker chips (queue list + detail card) --- */
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 8px;
+            border-radius: 11px; border: 1px solid color-mix(in srgb, var(--chip) 50%, #23272e);
+            background: color-mix(in srgb, var(--chip) 12%, #15171c); }
+    .chip-label { font-weight: 600; color: var(--chip); }
+    .chip-count { opacity: .75; color: #cdd3db; }
+    .chip-score-v { font-weight: 700; color: var(--tier); font-variant-numeric: tabular-nums;
+            padding-left: 6px; border-left: 1px solid color-mix(in srgb, var(--chip) 35%, #23272e); }
+    .chip-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chip); display: inline-block; }
+
+    /* --- unified detail card: archetype breakdown + upgrade paths (queue modal + records expand) --- */
+    .rp-head { display: flex; gap: 10px; align-items: center; margin: 8px 0 6px; }
+    .rp-warn { font-size: 12px; color: #d0a85a; background: #241f14; border: 1px solid #5a4a26;
+               border-radius: 5px; padding: 6px 9px; margin: 6px 0 10px; }
+    .rp-warn a { color: #e0c074; }
+    .rp-tabs { display: flex; gap: 6px; border-bottom: 1px solid #23272e; margin-bottom: 8px; }
+    .rp-tab { background: none; border: none; color: #9aa1ab; padding: 6px 10px; cursor: pointer;
+              border-bottom: 2px solid transparent; font: inherit; }
+    .rp-tab.on { color: #e8ebef; border-bottom-color: #8ab6ff; }
+    .rp-pane { display: none; } .rp-pane.on { display: block; }
+    .rp-noslot-row { display: inline-flex; gap: 5px; align-items: center; font-size: 12px;
+                     color: #9aa1ab; margin: 2px 0 8px; }
+    .rp-rule, .rp-target { border: 1px solid #23272e; border-radius: 6px; margin: 5px 0; background: #15171c; }
+    .rp-rule > summary { padding: 6px 9px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+    .rp-detail { padding: 6px 10px 9px; border-top: 1px solid #23272e; font-size: 12px; }
+    .rp-reqs { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .rp-reqs th, .rp-reqs td { text-align: left; padding: 2px 6px; border-bottom: 1px solid #23272e; }
+    .rp-reqs th { color: #9aa1ab; font-weight: 600; } .rp-reqs .num { text-align: right; }
+    .rp-reqs .hit { color: #9be3a3; } .rp-reqs .miss { color: #8b929c; }
+    .rp-target { padding: 7px 9px; }
+    .rp-target-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .rp-target-head .rp-target-cov { margin-left: auto; }
+    .rp-missing { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: 12px; }
+    .rp-missing th, .rp-missing td { text-align: left; padding: 2px 6px; border-bottom: 1px solid #23272e; }
+    .rp-missing th { color: #9aa1ab; font-weight: 600; }
+    .rp-slot { font-size: 11px; padding: 0 6px; border-radius: 8px; border: 1px solid #3a3f48; }
+    .rp-slot-prefix { color: #8ab6ff; border-color: #34536e; }
+    .rp-slot-suffix { color: #d0a85a; border-color: #6e5a34; }
+    .rp-slot-both { color: #c79be3; border-color: #5a3f6e; }
+    .rp-target-foot { font-size: 12px; }
+    .rp-off { opacity: .45; }
+
+    /* "archive is stale — re-evaluate" prompt (queue + rules) */
+    .stale-banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      background: #241f14; border: 1px solid #5a4a26; border-radius: 6px;
+      padding: 8px 12px; margin: 0 0 14px; color: #e0c074; }
+    .stale-banner button { border-color: #6e5a34; }
   </style>
 </head>
 <body>
@@ -220,6 +273,41 @@
       });
     }
     window.relTime = relTime; window.formatTimes = formatTimes;
+
+    // Wire the shared detail card (_detail_card.html) wherever it's injected — the queue modal
+    // and the records row-expansion both call this. Handles tab switching, the per-rule disable
+    // toggles (global; persisted via the API, no re-eval), and the "show matches without open
+    // slot" filter. Idempotent per container.
+    function wireDetailCard(root) {
+      root.querySelectorAll('.rp-tab').forEach(tab => {
+        tab.onclick = () => {
+          const name = tab.dataset.tab;
+          root.querySelectorAll('.rp-tab').forEach(t => t.classList.toggle('on', t === tab));
+          root.querySelectorAll('.rp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name));
+        };
+      });
+      root.querySelectorAll('.rp-toggle').forEach(cb => {
+        cb.onchange = async () => {
+          cb.disabled = true;
+          try {
+            const r = await fetch('/api/rules/' + encodeURIComponent(cb.dataset.archId) + '/enabled',
+              {method: 'POST', headers: {'Content-Type': 'application/json'},
+               body: JSON.stringify({enabled: cb.checked})});
+            if (!r.ok) throw new Error('http ' + r.status);
+          } catch (e) { cb.checked = !cb.checked; cb.disabled = false; return; }
+          const row = cb.closest('.rp-rule, .rp-target');
+          if (row) row.classList.toggle('rp-off', !cb.checked);
+          cb.disabled = false;
+        };
+      });
+      const noslot = root.querySelector('.rp-noslot');
+      if (noslot) {
+        const apply = () => root.querySelectorAll('.rp-rule[data-noslot="1"]')
+          .forEach(row => { row.style.display = noslot.checked ? '' : 'none'; });
+        noslot.onchange = apply; apply();
+      }
+    }
+    window.wireDetailCard = wireDetailCard;
 
     function bucket(b) {
       const pct = b.max_hits ? Math.min(100, 100 * b.used / b.max_hits) : 0;

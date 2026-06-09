@@ -1,23 +1,61 @@
 {% extends "base.html" %}
+{% from "_chips.html" import render_chips %}
 {% block content %}
+{% if archive_stale %}
+<form method="post" action="{{ url_for('rules_reevaluate') }}" class="stale-banner">
+  <span>⚠ Rules or archetypes changed since some items were scored — the queue may be out of date.</span>
+  <button type="submit">Re-evaluate archive</button>
+</form>
+{% endif %}
 <div class="qbar">
   <strong>Review queue</strong>
   <span class="muted">{{ unseen }} unseen · {{ total }} {{ 'shown' if show_all else 'flagged' }}</span>
   <span class="muted" style="margin-left:6px">sort:</span>
-  <a href="{{ url_for('queue', all=1 if show_all else None) }}"
-     class="{{ 'sort-on' if sort != 'matches' else 'muted' }}">newest</a>
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort='matches') }}"
-     class="{{ 'sort-on' if sort == 'matches' else 'muted' }}">most matches</a>
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort='score') }}"
+  <a href="{{ url_for('queue', all=1 if show_all else None, rarity=active_rarities, checker=active_checkers) }}"
+     class="{{ 'sort-on' if sort == 'recent' else 'muted' }}">newest</a>
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort='score', rarity=active_rarities, checker=active_checkers) }}"
      class="{{ 'sort-on' if sort == 'score' else 'muted' }}">best score</a>
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort='checkers', rarity=active_rarities, checker=active_checkers) }}"
+     class="{{ 'sort-on' if sort == 'checkers' else 'muted' }}">most checkers</a>
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort='ruleset', rarity=active_rarities, checker=active_checkers) }}"
+     class="{{ 'sort-on' if sort == 'ruleset' else 'muted' }}">most ruleset matches</a>
   <span style="flex:1"></span>
   {% if show_all %}
-    <a href="{{ url_for('queue', sort=sort if sort != 'recent' else None) }}">Hide below-threshold</a>
+    <a href="{{ url_for('queue', sort=sort if sort != 'recent' else None, rarity=active_rarities, checker=active_checkers) }}">Hide below-threshold</a>
   {% else %}
-    <a href="{{ url_for('queue', all=1, sort=sort if sort != 'recent' else None) }}">Show all evaluated</a>
+    <a href="{{ url_for('queue', all=1, sort=sort if sort != 'recent' else None, rarity=active_rarities, checker=active_checkers) }}">Show all evaluated</a>
   {% endif %}
   <button id="btn-seen-all">Mark all seen</button>
 </div>
+
+<form class="qfilter" method="get">
+  {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+  {% if sort != 'recent' %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+  <span class="muted">rarity:</span>
+  {% for r in rarities_present %}
+  <label class="chk"><input type="checkbox" name="rarity" value="{{ r }}" {{ 'checked' if r in active_rarities }}> {{ r }}</label>
+  {% else %}<span class="muted">—</span>{% endfor %}
+  <span class="muted" style="margin-left:12px">checker:</span>
+  {% for name, meta in checkers_meta.items() %}
+  <label class="chk"><input type="checkbox" name="checker" value="{{ name }}" {{ 'checked' if name in active_checkers }}>
+    <span class="chip-dot" style="--chip:{{ meta.color }}"></span>{{ meta.label }}</label>
+  {% endfor %}
+  <button type="submit">Apply</button>
+  {% if active_rarities or active_checkers %}
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort=sort if sort != 'recent' else None) }}">clear</a>
+  {% endif %}
+</form>
+
+<form class="qfilter qcutoff" method="post" action="{{ url_for('settings_queue_cutoff') }}">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <span class="muted" title="Hide Rule-checker-flagged items below this score (per rarity). Items flagged by another checker always show.">ruleset score cutoff:</span>
+  <label class="chk">Magic <input type="number" name="magic" min="0" max="1" step="0.05"
+    value="{{ '%.2f'|format(cutoff_magic) }}"></label>
+  <label class="chk">Rare <input type="number" name="rare" min="0" max="1" step="0.05"
+    value="{{ '%.2f'|format(cutoff_rare) }}"></label>
+  <button type="submit">Save cutoff</button>
+  <span class="muted">0 = show all · applies instantly, no re-eval</span>
+</form>
 
 {% for it in items %}
 {% set c = it["card"] %}
@@ -25,17 +63,7 @@
   {% include "_item_card.html" %}
 
   <div class="qside">
-    {% if it["score"] is not none %}
-    <div class="score-badge tier-{{ it['score_tier'] }}" title="Archetype score (0–1) · click the item to see the breakdown">
-      <span class="score-tier">{{ it["score_tier"] }}</span>
-      <span class="score-val">{{ '%.2f'|format(it["score"]) }}</span>
-    </div>
-    {% endif %}
-    <div class="why">
-      <div class="why-h">Flagged · {{ it["reasons_list"]|length }} match{{ '' if it["reasons_list"]|length == 1 else 'es' }}</div>
-      {% for reason in it["reasons_list"] %}<div class="reason">{{ reason }}</div>
-      {% else %}<div class="muted">—</div>{% endfor %}
-    </div>
+    {{ render_chips(it["chips"]) }}
     <div class="qmeta">
       <div>Stash tab:
         {% if it["stash_tab"] %}<span class="val">{{ it["stash_tab"] }}</span>
@@ -44,8 +72,8 @@
       {% if it["listed_at"] %}<div class="muted">listed <span class="ts" data-ts="{{ it['listed_at'] }}"></span></div>{% endif %}
       {% if it["stash_regex"] %}<button class="btn-regex" data-regex="{{ it['stash_regex'] }}"
         title="Copies a search that highlights this item in the stash tab (Ctrl-F)">Copy stash regex</button>{% endif %}
-      {% if it["score"] is not none %}<button class="btn-rules" data-hash="{{ it['hash'] }}"
-        title="See which rules matched, the score calculation, and craftable upgrade paths">Matched rules</button>{% endif %}
+      <button class="btn-rules" data-hash="{{ it['hash'] }}"
+        title="See which checkers/rules matched, the score calculation, and craftable upgrade paths">Details</button>
     </div>
     {% if it["seen"] %}<span class="muted seen-tag">seen</span>
     {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
@@ -74,7 +102,7 @@
   <div class="modal-backdrop" data-close></div>
   <div class="modal-box">
     <button class="modal-x" data-close title="Close (Esc)">✕</button>
-    <h3>Matched rules</h3>
+    <h3>Item detail</h3>
     <div id="rules-modal-body"><p class="muted">Loading…</p></div>
   </div>
 </div>
@@ -89,24 +117,10 @@
   .modal-box h3 { margin:0 0 8px; }
   .modal-x { position:absolute; top:8px; right:10px; background:none; border:none; color:#9aa1ab;
     font-size:16px; cursor:pointer; }
-  .rp-head { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
-  .rp-warn { font-size:12px; color:#d0a85a; background:#241f14; border:1px solid #5a4a26;
-    border-radius:5px; padding:6px 9px; margin:6px 0 10px; }
-  .rp-warn a { color:#e0c074; }
-  .rp-tabs { display:flex; gap:6px; border-bottom:1px solid #23272e; margin-bottom:8px; }
-  .rp-tab { background:none; border:none; color:#9aa1ab; padding:6px 10px; cursor:pointer;
-    border-bottom:2px solid transparent; }
-  .rp-tab.on { color:#e8ebef; border-bottom-color:#8ab6ff; }
-  .rp-pane { display:none; } .rp-pane.on { display:block; }
-  .rp-rule, .rp-target { border:1px solid #23272e; border-radius:6px; margin:5px 0; background:#15171c; }
-  .rp-rule > summary { padding:6px 9px; cursor:pointer; display:flex; gap:8px; align-items:center; }
-  .rp-detail { padding:6px 10px 9px; border-top:1px solid #23272e; }
-  .rp-target { padding:6px 9px; display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
-  .rp-reqs { width:100%; border-collapse:collapse; margin-top:6px; }
-  .rp-reqs th, .rp-reqs td { text-align:left; padding:2px 6px; border-bottom:1px solid #23272e; }
-  .rp-reqs th { color:#9aa1ab; font-weight:600; } .rp-reqs .num { text-align:right; }
-  .rp-reqs .hit { color:#9be3a3; } .rp-reqs .miss { color:#8b929c; }
-  .rp-miss { color:#cdb46a; } .rp-off { opacity:.45; }
+  /* Queue filter bar (chip + .rp-* detail styles are global in base.html) */
+  .qfilter { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0 10px;
+    padding:7px 10px; border:1px solid #23272e; border-radius:6px; background:#14161a; }
+  .qfilter .chk { display:inline-flex; align-items:center; gap:4px; font-size:13px; }
 </style>
 
 <script>
@@ -151,43 +165,19 @@
     };
   });
 
-  // Matched-rules popup: fetch the breakdown fragment into the modal, wire tabs + disable toggles.
+  // Details popup: fetch the shared detail card into the modal, then wire it (tabs/toggles/
+  // no-slot filter live in window.wireDetailCard so the records page reuses the same behavior).
   const modal = document.getElementById('rules-modal');
   const modalBody = document.getElementById('rules-modal-body');
   function closeModal() { modal.hidden = true; modalBody.innerHTML = '<p class="muted">Loading…</p>'; }
-  function wirePopup() {
-    modalBody.querySelectorAll('.rp-tab').forEach(tab => {
-      tab.onclick = () => {
-        const name = tab.dataset.tab;
-        modalBody.querySelectorAll('.rp-tab').forEach(t => t.classList.toggle('on', t === tab));
-        modalBody.querySelectorAll('.rp-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === name));
-      };
-    });
-    // Toggling a rule persists immediately (global) but does NOT re-evaluate the archive — we grey
-    // the row in place rather than re-fetch (a disabled rule drops out of the breakdown entirely).
-    modalBody.querySelectorAll('.rp-toggle').forEach(cb => {
-      cb.onchange = async () => {
-        cb.disabled = true;
-        try {
-          const r = await fetch('/api/rules/' + encodeURIComponent(cb.dataset.archId) + '/enabled',
-            {method: 'POST', headers: {'Content-Type': 'application/json'},
-             body: JSON.stringify({enabled: cb.checked})});
-          if (!r.ok) throw new Error('http ' + r.status);
-        } catch (e) { cb.checked = !cb.checked; cb.disabled = false; return; }
-        const row = cb.closest('.rp-rule, .rp-target');
-        if (row) row.classList.toggle('rp-off', !cb.checked);
-        cb.disabled = false;
-      };
-    });
-  }
   document.querySelectorAll('.btn-rules').forEach(btn => {
     btn.onclick = async () => {
       modal.hidden = false;
       try {
-        const r = await fetch('/records/' + btn.dataset.hash + '/rules');
+        const r = await fetch('/records/' + btn.dataset.hash + '/card');
         modalBody.innerHTML = await r.text();
-        wirePopup();
-      } catch (e) { modalBody.innerHTML = '<p class="error">Failed to load rules.</p>'; }
+        window.wireDetailCard(modalBody);
+      } catch (e) { modalBody.innerHTML = '<p class="error">Failed to load detail.</p>'; }
     };
   });
   modal.querySelectorAll('[data-close]').forEach(el => el.onclick = closeModal);

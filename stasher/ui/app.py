@@ -17,6 +17,56 @@ from .itemcard import build_card
 
 PAGE_SIZE = 50
 
+# Per-checker presentation: label + chip color. One chip per checker fires in the queue, so the
+# user can tell at a glance which checker flagged an item (and filter/sort by it). Keys match each
+# checker's ``name`` (see stasher/evaluate/checks/*). ``order`` controls chip ordering.
+CHECKERS: dict[str, dict] = {
+    "archetype_set": {"label": "Ruleset", "color": "#8ab6ff"},
+    "item_filter":   {"label": "Filter",  "color": "#9be3a3"},
+    "regex":         {"label": "Regex",   "color": "#cdb46a"},
+    "unique_roll":   {"label": "Unique",  "color": "#c79be3"},
+}
+
+# Tier accent colors (match the .tier-* text colors in base.html) — the Ruleset chip is tinted by
+# the item's tier so its quality reads at a glance.
+TIER_COLORS = {"S": "#ffcf6b", "A": "#9be3a3", "B": "#8ab6ff", "C": "#aeb6c0", "D": "#8b929c"}
+
+
+def _checker_chips(results: list[dict], score: float | None) -> list[dict]:
+    """Collapse a stored ``results`` list into at most one chip per checker (queue + detail card).
+
+    The ``archetype_set`` chip carries the overall tier+score and the matched-rule count; other
+    checkers show their label + a fired-rule count, with the joined explanations as a tooltip."""
+    by_checker: dict[str, list[dict]] = {}
+    for r in results or []:
+        by_checker.setdefault(r.get("checker", ""), []).append(r)
+    chips = []
+    for name in CHECKERS:
+        hits = by_checker.get(name)
+        if not hits:
+            continue
+        meta = CHECKERS[name]
+        chip = {"checker": name, "label": meta["label"], "color": meta["color"],
+                "title": " · ".join(h.get("explanation", "") for h in hits)}
+        if name == "archetype_set":
+            # True total comes from the headline's `count` (only a few per-rule reasons are stored).
+            headline = next((h for h in hits if h.get("rule") == "archetype_set"), None)
+            ruleset = (headline or {}).get("count")
+            if ruleset is None:
+                ruleset = sum(1 for h in hits if str(h.get("rule", "")).startswith("archetype_set:"))
+            chip["count"] = ruleset
+            chip["text"] = f"{ruleset} rule" + ("" if ruleset == 1 else "s")
+            if score is not None:
+                chip["tier"] = value_to_tier(score)
+                chip["score"] = score
+                # Chip keeps its checker color (identity); only the score segment is tier-tinted.
+                chip["tier_color"] = TIER_COLORS.get(chip["tier"], meta["color"])
+        else:
+            chip["count"] = len(hits)
+            chip["text"] = f"{len(hits)} match" + ("" if len(hits) == 1 else "es")
+        chips.append(chip)
+    return chips
+
 
 def _apply_archetype_edits(aset, form) -> None:
     """Apply the Rules card-editor form onto a loaded ArchetypeSet (in place)."""
@@ -30,9 +80,6 @@ def _apply_archetype_edits(aset, form) -> None:
     ri = fnum("scoring.roll_influence")
     if ri is not None:
         aset.scoring.roll_influence = max(0.0, min(1.0, ri))
-    mri = fnum("scoring.magic_roll_influence")
-    if mri is not None:
-        aset.scoring.magic_roll_influence = max(0.0, min(1.0, mri))
     for t in ("T1", "T2", "T3", "below"):
         v = fnum(f"scoring.tier.{t}")
         if v is not None:
@@ -43,9 +90,30 @@ def _apply_archetype_edits(aset, form) -> None:
     cc = fnum("scoring.craft_credit")
     if cc is not None:
         aset.scoring.craft_credit = max(0.0, min(1.0, cc))
+    ct = fnum("scoring.craft_target")
+    if ct is not None:
+        aset.scoring.craft_target = max(1, min(6, int(ct)))
+    mc = fnum("scoring.magic_completion")
+    if mc is not None:
+        aset.scoring.magic_completion = max(0.0, min(1.0, mc))
+    ms = fnum("scoring.magic_solo")
+    if ms is not None:
+        aset.scoring.magic_solo = max(0.0, min(1.0, ms))
     bc = fnum("scoring.breadth_cap")
     if bc is not None:
         aset.scoring.breadth_cap = max(0.0, min(1.0, bc))
+    rr = fnum("scoring.rarity_ref")
+    if rr is not None:
+        aset.scoring.rarity_ref = max(0.001, min(1.0, rr))
+    rg = fnum("scoring.rarity_gamma")
+    if rg is not None:
+        aset.scoring.rarity_gamma = max(0.0, min(3.0, rg))
+    rcap = fnum("scoring.rarity_cap")
+    if rcap is not None:
+        aset.scoring.rarity_cap = max(1.0, min(20.0, rcap))
+    rfs = fnum("scoring.rarity_floor_scale")
+    if rfs is not None:
+        aset.scoring.rarity_floor_scale = max(0.1, min(20.0, rfs))
 
     for a in aset.archetypes:
         a.enabled = form.get(f"arch.{a.id}.enabled") == "on"
@@ -163,31 +231,23 @@ def create_app(stasher) -> Flask:
             reasons = json.loads(row["reasons"]) if row["reasons"] else []
         except (ValueError, TypeError):
             reasons = []
+        try:
+            results = json.loads(row["results"]) if row["results"] else []
+        except (ValueError, TypeError):
+            results = []
         item = entry.get("item") or {}
         card = build_card(item)
-        listing = entry.get("listing") or {}
+        # Non-ruleset reasons (filter/regex/unique) are surfaced as plain lines; the archetype_set
+        # detail comes from explain_score's structured breakdown (tabs).
+        other_reasons = [r.get("explanation", "") for r in results
+                         if r.get("checker") != "archetype_set"]
         return render_template(
-            "record_detail.html", c=card, reasons=reasons,
-            whisper=listing.get("whisper"),
+            "_detail_card.html", c=card, reasons=reasons,
+            chips=_checker_chips(results, row["score"]),
+            other_reasons=other_reasons,
             score_breakdown=stasher.evaluator.explain_score(item),
+            hash=item_hash,
         )
-
-    @app.route("/records/<item_hash>/rules")
-    def record_rules(item_hash):
-        """The matched-rules popup fragment: the live archetype breakdown (overall = peak +
-        breadth, per-rule contributions + calculation) and the craftable upgrade-path targets."""
-        row = store.get_record(item_hash)
-        if not row:
-            return "not found", 404
-        try:
-            entry = json.loads(row["raw_json"])
-        except (ValueError, TypeError):
-            return "bad record", 500
-        item = entry.get("item") or {}
-        bd = stasher.evaluator.explain_score(item)
-        if bd is None:
-            return "<p class='muted'>The archetype_set checker is not active.</p>"
-        return render_template("_rules_popup.html", b=bd, hash=item_hash)
 
     @app.route("/api/rules/<arch_id>/enabled", methods=["POST"])
     def api_rule_enabled(arch_id):
@@ -200,13 +260,17 @@ def create_app(stasher) -> Flask:
     def queue():
         show_all = request.args.get("all") == "1"
         sort = request.args.get("sort")
-        sort = sort if sort in ("matches", "score") else "recent"
+        sort = sort if sort in ("matches", "score", "checkers", "ruleset") else "recent"
         page = max(1, request.args.get("page", 1, type=int))
-        total = store.count_queue(show_all)
+        rarities = [r for r in request.args.getlist("rarity") if r]
+        checkers = [c for c in request.args.getlist("checker") if c in CHECKERS]
+        cutoff_magic, cutoff_rare = store._score_cutoffs()
+        total = store.count_queue(show_all, rarities=rarities, checkers=checkers)
         pages = max(1, math.ceil(total / PAGE_SIZE))
         page = min(page, pages)
         rows = store.queue_items(
-            show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, sort=sort
+            show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, sort=sort,
+            rarities=rarities, checkers=checkers,
         )
         items = []
         for r in rows:
@@ -214,9 +278,10 @@ def create_app(stasher) -> Flask:
             d["score"] = r["score"]
             d["score_tier"] = value_to_tier(r["score"]) if r["score"] is not None else None
             try:
-                d["reasons_list"] = json.loads(r["reasons"]) if r["reasons"] else []
+                results = json.loads(r["results"]) if r["results"] else []
             except (ValueError, TypeError):
-                d["reasons_list"] = []
+                results = []
+            d["chips"] = _checker_chips(results, r["score"])
             try:
                 entry = json.loads(r["raw_json"])
                 item = entry.get("item") or {}
@@ -237,6 +302,13 @@ def create_app(stasher) -> Flask:
             pages=pages,
             show_all=show_all,
             sort=sort,
+            checkers_meta=CHECKERS,
+            rarities_present=store.queue_rarities(show_all),
+            active_rarities=rarities,
+            active_checkers=checkers,
+            cutoff_magic=cutoff_magic,
+            cutoff_rare=cutoff_rare,
+            archive_stale=store.has_stale_evaluations(stasher.evaluator.rules_hash),
             setup_ok=_setup_ok(),
         )
 
@@ -268,11 +340,25 @@ def create_app(stasher) -> Flask:
             filter_enabled=filter_enabled,
             filter_text=filter_text if filter_text is not None else filter_disk,
             archetype_set_enabled=evaluator.archetype_set_is_enabled(),
+            cutoff_magic=store._score_cutoffs()[0],
+            cutoff_rare=store._score_cutoffs()[1],
             rules_error=None,
             rules_message=None,
         )
         ctx.update(extra)
         return render_template("settings.html", **ctx)
+
+    @app.route("/settings/queue_cutoff", methods=["POST"])
+    def settings_queue_cutoff():
+        """Persist the per-rarity ruleset score cutoff (editable from the queue *and* settings).
+        Redirects back to wherever it was submitted (queue keeps its filters via ``next``)."""
+        for field, key in (("magic", "queue_score_cutoff_magic"), ("rare", "queue_score_cutoff_rare")):
+            try:
+                v = max(0.0, min(1.0, float(request.form.get(field, "") or 0)))
+            except (ValueError, TypeError):
+                v = 0.0
+            store.set_setting(key, f"{v:.2f}")
+        return redirect(request.form.get("next") or request.referrer or url_for("queue"))
 
     @app.route("/settings", methods=["GET", "POST"])
     def settings():
@@ -319,6 +405,7 @@ def create_app(stasher) -> Flask:
     def _render_rules(**extra):
         ev = stasher.evaluator
         ctx = dict(aset=ev.archetype_set(), enabled=ev.archetype_set_is_enabled(),
+                   archive_stale=store.has_stale_evaluations(ev.rules_hash),
                    rules_error=None, rules_message=None)
         ctx.update(extra)
         return render_template("rules.html", **ctx)

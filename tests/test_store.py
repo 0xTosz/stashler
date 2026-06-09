@@ -3,11 +3,11 @@ import json
 from stasher.store import ItemRecord, Store, record_from_fetch_entry
 
 
-def make_record(h="abc", name="Test Item"):
+def make_record(h="abc", name="Test Item", rarity="Rare"):
     return ItemRecord(
         hash=h, account="me", listed_at="2026-01-01T00:00:00Z",
         price_amount=5.0, price_currency="exalted", price_type="price",
-        item_name=name, type_line="Sword", rarity="Rare", whisper="@me hi",
+        item_name=name, type_line="Sword", rarity=rarity, whisper="@me hi",
         league="Standard", raw_json="{}",
     )
 
@@ -89,6 +89,114 @@ def test_queue_sort_by_match_count(tmp_path):
     by_matches = [r["hash"] for r in store.queue_items(sort="matches")]
     assert by_matches == ["b", "c", "a"]   # most matches first
     assert set(by_recent) == {"a", "b", "c"}
+    store.close()
+
+
+def test_queue_per_checker_filters_and_sorts(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+
+    def R(checker, rule="x", expl="e", score=None):
+        return {"checker": checker, "rule": rule, "explanation": expl, "score": score}
+
+    def add(h, rarity, results, score=None):
+        store.insert_item(make_record(h=h, name=h, rarity=rarity))
+        ev = types.SimpleNamespace(flagged=True, score=score, results=results,
+                                   reasons=[r["explanation"] for r in results])
+        store.upsert_evaluation(h, ev, "rh")
+
+    # a: Rare, flagged by ruleset (2 mined rules) + filter; b: Magic, filter only; c: Rare, unique
+    add("a", "Rare", [R("archetype_set", "archetype_set", "ov", 0.8),
+                      R("archetype_set", "archetype_set:1"), R("archetype_set", "archetype_set:2"),
+                      R("item_filter", "filter")], score=0.8)
+    add("b", "Magic", [R("item_filter", "filter")])
+    add("c", "Rare", [R("unique_roll", "u")])
+
+    hsah = lambda rows: {r["hash"] for r in rows}
+    # rarity filter
+    assert hsah(store.queue_items(rarities=["Magic"])) == {"b"}
+    assert hsah(store.queue_items(rarities=["Rare"])) == {"a", "c"}
+    # checker filter (OR semantics)
+    assert hsah(store.queue_items(checkers=["item_filter"])) == {"a", "b"}
+    assert hsah(store.queue_items(checkers=["unique_roll", "archetype_set"])) == {"a", "c"}
+    # combine rarity + checker
+    assert hsah(store.queue_items(rarities=["Rare"], checkers=["item_filter"])) == {"a"}
+    # new sorts: most checkers / most ruleset matches both put 'a' first
+    assert [r["hash"] for r in store.queue_items(sort="checkers")][0] == "a"
+    assert [r["hash"] for r in store.queue_items(sort="ruleset")][0] == "a"
+    # counts respect filters
+    assert store.count_queue(rarities=["Magic"]) == 1
+    assert store.count_queue(checkers=["item_filter"]) == 2
+    # denormalized columns persisted
+    row = next(r for r in store.queue_items() if r["hash"] == "a")
+    assert row["checker_count"] == 2 and row["ruleset_matches"] == 2
+    assert hsah(store.queue_items(rarities=["Normal"])) == set()   # rarity not present → empty
+    store.queue_rarities()  # smoke
+    store.close()
+
+
+def test_ruleset_matches_uses_headline_count_not_surfaced_reasons(tmp_path):
+    """The archetype_set checker surfaces only a few per-rule reasons but the headline carries the
+    true total — ruleset_matches must reflect the total (e.g. 12), not the surfaced count (3)."""
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+    store.insert_item(make_record(h="z", name="z", rarity="Rare"))
+    results = [{"checker": "archetype_set", "rule": "archetype_set", "explanation": "ov",
+                "score": 0.9, "count": 12}]
+    results += [{"checker": "archetype_set", "rule": f"archetype_set:{i}", "explanation": "r",
+                 "score": None, "count": None} for i in range(3)]   # only 3 surfaced
+    ev = types.SimpleNamespace(flagged=True, score=0.9, results=results,
+                               reasons=[r["explanation"] for r in results])
+    store.upsert_evaluation("z", ev, "rh")
+    row = next(r for r in store.queue_items() if r["hash"] == "z")
+    assert row["ruleset_matches"] == 12      # headline total, not the 3 surfaced reasons
+    store.close()
+
+
+def test_has_stale_evaluations(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+    store.insert_item(make_record(h="a"))
+    store.upsert_evaluation("a", types.SimpleNamespace(
+        flagged=True, reasons=["r"], score=None, results=[]), "hash1")
+    assert store.has_stale_evaluations("hash2") is True    # different rules version → stale
+    assert store.has_stale_evaluations("hash1") is False   # current → fresh
+    store.close()
+
+
+def test_queue_score_cutoff_hides_ruleset_only_low_scores(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+
+    def add(h, rarity, results, score):
+        store.insert_item(make_record(h=h, name=h, rarity=rarity))
+        store.upsert_evaluation(h, types.SimpleNamespace(
+            flagged=True, score=score, results=results,
+            reasons=[x["explanation"] for x in results]), "rh")
+
+    def R(checker, rule, expl="e"):
+        return {"checker": checker, "rule": rule, "explanation": expl, "score": None}
+
+    add("rare_lo", "Rare", [R("archetype_set", "archetype_set")], 0.40)
+    add("rare_hi", "Rare", [R("archetype_set", "archetype_set")], 0.70)
+    add("magic_lo", "Magic", [R("archetype_set", "archetype_set")], 0.40)
+    add("rare_lo_filter", "Rare",
+        [R("archetype_set", "archetype_set"), R("item_filter", "filter")], 0.40)  # filter keeps it
+    add("uniq", "Unique", [R("unique_roll", "u")], None)                          # other checker
+
+    assert store.count_queue() == 5                       # cutoff off (default 0) → all show
+    store.set_setting("queue_score_cutoff_rare", "0.6")
+    store.set_setting("queue_score_cutoff_magic", "0.5")
+
+    shown = {r["hash"] for r in store.queue_items()}
+    assert shown == {"rare_hi", "rare_lo_filter", "uniq"}  # low ruleset-only magic/rare hidden
+    assert store.count_queue() == 3
+    assert store.count_unseen() == 3                       # nav badge respects the cutoff
+    assert store.count_queue(show_all=True) == 5           # "show all evaluated" bypasses it
     store.close()
 
 

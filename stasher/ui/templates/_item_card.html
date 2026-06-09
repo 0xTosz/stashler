@@ -20,9 +20,11 @@
     {% if c.explicits %}
       <div class="t-sep"></div>
       {% for m in c.explicits %}
-        <div class="t-mod">
+        <div class="t-mod{{ ' hybrid' if m.hybrid }}">
           {% if m.tier %}<span class="tier {{ 'pre' if m.tier.startswith('P') else 'suf' }}">{{ m.tier }}</span>{% endif %}
-          <span class="modtext">{{ m.text }}</span>
+          <span class="modlines">
+            {% for line in m.lines %}<span class="modtext">{{ line }}</span>{% endfor %}
+          </span>
         </div>
       {% endfor %}
     {% endif %}

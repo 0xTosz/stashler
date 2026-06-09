@@ -118,6 +118,16 @@ class Store:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(evaluations)")}
         if "score" not in cols:
             self._conn.execute("ALTER TABLE evaluations ADD COLUMN score REAL")
+        # Per-checker attribution (queue chips / filters / sorts). NULL for evaluations made
+        # before this migration → they show no chips and count 0 until the next re-evaluation.
+        if "results" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN results TEXT")
+        if "checkers" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN checkers TEXT")
+        if "checker_count" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN checker_count INTEGER")
+        if "ruleset_matches" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN ruleset_matches INTEGER")
 
     def close(self) -> None:
         with self._lock:
@@ -190,7 +200,7 @@ class Store:
     def get_record(self, item_hash: str) -> sqlite3.Row | None:
         with self._lock:
             return self._conn.execute(
-                "SELECT i.raw_json, e.reasons, e.flagged "
+                "SELECT i.raw_json, e.reasons, e.results, e.score, e.flagged "
                 "FROM items i LEFT JOIN evaluations e ON e.hash = i.hash "
                 "WHERE i.hash = ?",
                 (item_hash,),
@@ -215,18 +225,35 @@ class Store:
     def upsert_evaluation(self, item_hash: str, evaluation, rules_hash: str) -> None:
         """Store a verdict. Preserves the `seen` flag across re-evaluation."""
         reasons = json.dumps(list(evaluation.reasons), separators=(",", ":"))
+        results = list(getattr(evaluation, "results", []))
+        results_json = json.dumps(results, separators=(",", ":"))
+        checkers = sorted({r.get("checker", "") for r in results if r.get("checker")})
+        checkers_json = json.dumps(checkers, separators=(",", ":"))
+        # Prefer the archetype_set headline's true total (it surfaces only a few per-rule reasons);
+        # fall back to counting the per-rule entries for results without a headline count.
+        headline_count = next((r.get("count") for r in results
+                               if r.get("checker") == "archetype_set"
+                               and r.get("rule") == "archetype_set"
+                               and r.get("count") is not None), None)
+        ruleset_matches = headline_count if headline_count is not None else sum(
+            1 for r in results if str(r.get("rule", "")).startswith("archetype_set:"))
         with self._lock:
             self._conn.execute(
                 """
                 INSERT INTO evaluations
-                    (hash, flagged, seen, seen_at, reasons, score, rules_hash, evaluated_at)
-                VALUES (?, ?, 0, NULL, ?, ?, ?, ?)
+                    (hash, flagged, seen, seen_at, reasons, score, rules_hash, evaluated_at,
+                     results, checkers, checker_count, ruleset_matches)
+                VALUES (?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET
-                    flagged      = excluded.flagged,
-                    reasons      = excluded.reasons,
-                    score        = excluded.score,
-                    rules_hash   = excluded.rules_hash,
-                    evaluated_at = excluded.evaluated_at
+                    flagged         = excluded.flagged,
+                    reasons         = excluded.reasons,
+                    score           = excluded.score,
+                    rules_hash      = excluded.rules_hash,
+                    evaluated_at    = excluded.evaluated_at,
+                    results         = excluded.results,
+                    checkers        = excluded.checkers,
+                    checker_count   = excluded.checker_count,
+                    ruleset_matches = excluded.ruleset_matches
                 """,
                 (
                     item_hash,
@@ -235,6 +262,10 @@ class Store:
                     getattr(evaluation, "score", None),
                     rules_hash,
                     utc_now_iso(),
+                    results_json,
+                    checkers_json,
+                    len(checkers),
+                    ruleset_matches,
                 ),
             )
             self._conn.commit()
@@ -258,44 +289,122 @@ class Store:
                 ).fetchall()
         return [(r["hash"], r["raw_json"]) for r in rows]
 
+    SCORE_CUTOFF_KEYS = ("queue_score_cutoff_magic", "queue_score_cutoff_rare")
+
+    def _score_cutoffs(self) -> tuple[float, float]:
+        """(magic, rare) ruleset score cutoffs from settings, clamped to 0..1 (0 = off)."""
+        def f(key: str) -> float:
+            try:
+                return max(0.0, min(1.0, float(self.get_setting(key, "0") or 0)))
+            except (ValueError, TypeError):
+                return 0.0
+        return f(self.SCORE_CUTOFF_KEYS[0]), f(self.SCORE_CUTOFF_KEYS[1])
+
+    def _queue_filter(self, show_all, rarities, checkers) -> tuple[str, list]:
+        """Shared WHERE clause for queue_items/count_queue: flagged gate + rarity IN (…) +
+        a checker membership test (item flagged by ANY of the given checkers — OR semantics).
+
+        Also applies the persistent **ruleset score cutoff**: a Magic/Rare item flagged *only* by
+        the archetype_set checker is hidden when its score is below the per-rarity cutoff (items
+        also flagged by another checker, or of other rarities, are unaffected). Skipped in
+        ``show_all`` (the see-everything view)."""
+        clauses: list[str] = []
+        params: list = []
+        if not show_all:
+            clauses.append("e.flagged = 1")
+            cm, cr = self._score_cutoffs()
+            if cm > 0 or cr > 0:
+                clauses.append(
+                    "(EXISTS (SELECT 1 FROM json_each(COALESCE(e.checkers, '[]')) "
+                    "        WHERE value != 'archetype_set')"
+                    " OR e.score IS NULL"
+                    " OR (i.rarity = 'Magic' AND e.score >= ?)"
+                    " OR (i.rarity = 'Rare'  AND e.score >= ?)"
+                    " OR i.rarity NOT IN ('Magic', 'Rare'))"
+                )
+                params.extend([cm, cr])
+        if rarities:
+            clauses.append(f"i.rarity IN ({','.join('?' * len(rarities))})")
+            params.extend(rarities)
+        if checkers:
+            placeholders = ",".join("?" * len(checkers))
+            clauses.append(
+                "EXISTS (SELECT 1 FROM json_each(COALESCE(e.checkers, '[]')) "
+                f"WHERE value IN ({placeholders}))"
+            )
+            params.extend(checkers)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        return where, params
+
     def queue_items(
         self,
         show_all: bool = False,
         limit: int = 100,
         offset: int = 0,
         sort: str = "recent",
+        rarities: list[str] | None = None,
+        checkers: list[str] | None = None,
     ) -> list[sqlite3.Row]:
         sql = (
             "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
             "i.price_currency, i.price_type, i.whisper, i.listed_at, i.fetched_at, "
-            "i.raw_json, e.reasons, e.score, e.flagged, e.seen, e.seen_at, e.evaluated_at "
+            "i.raw_json, e.reasons, e.results, e.score, e.checker_count, e.ruleset_matches, "
+            "e.flagged, e.seen, e.seen_at, e.evaluated_at "
             "FROM evaluations e JOIN items i ON i.hash = e.hash"
         )
-        if not show_all:
-            sql += " WHERE e.flagged = 1"
-        # Seen items always sink to the bottom; within that, by score, match count, or recency.
+        where, params = self._queue_filter(show_all, rarities, checkers)
+        sql += where
+        # Seen items always sink to the bottom; within that, by score, checker/ruleset match
+        # count, or recency.
         primary = {
             "matches": "json_array_length(COALESCE(e.reasons, '[]')) DESC",
             "score": "(e.score IS NULL) ASC, e.score DESC",
+            "checkers": "COALESCE(e.checker_count, 0) DESC",
+            "ruleset": "COALESCE(e.ruleset_matches, 0) DESC",
         }.get(sort, "e.evaluated_at DESC")
         sql += f" ORDER BY e.seen ASC, {primary}, i.fetched_at DESC LIMIT ? OFFSET ?"
         with self._lock:
-            return self._conn.execute(sql, (limit, offset)).fetchall()
+            return self._conn.execute(sql, (*params, limit, offset)).fetchall()
 
-    def count_queue(self, show_all: bool = False) -> int:
-        sql = "SELECT COUNT(*) AS n FROM evaluations"
-        if not show_all:
-            sql += " WHERE flagged = 1"
+    def count_queue(
+        self,
+        show_all: bool = False,
+        rarities: list[str] | None = None,
+        checkers: list[str] | None = None,
+    ) -> int:
+        where, params = self._queue_filter(show_all, rarities, checkers)
+        sql = "SELECT COUNT(*) AS n FROM evaluations e JOIN items i ON i.hash = e.hash" + where
         with self._lock:
-            return int(self._conn.execute(sql).fetchone()["n"])
+            return int(self._conn.execute(sql, params).fetchone()["n"])
+
+    def queue_rarities(self, show_all: bool = False) -> list[str]:
+        """Distinct rarities present in the queue (for the filter bar), most common first."""
+        where, params = self._queue_filter(show_all, None, None)
+        sql = ("SELECT i.rarity AS r, COUNT(*) AS n FROM evaluations e "
+               "JOIN items i ON i.hash = e.hash" + where +
+               " GROUP BY i.rarity ORDER BY n DESC")
+        with self._lock:
+            return [row["r"] for row in self._conn.execute(sql, params).fetchall() if row["r"]]
+
+    def has_stale_evaluations(self, rules_hash: str) -> bool:
+        """Whether any stored evaluation predates the current rules/archetype-set version (its
+        ``rules_hash`` differs). Drives the "re-evaluate the archive" prompt after an upgrade or a
+        rules change. Cheap: stops at the first mismatch."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM evaluations "
+                "WHERE rules_hash IS NULL OR rules_hash != ? LIMIT 1",
+                (rules_hash,),
+            ).fetchone()
+        return row is not None
 
     def count_unseen(self) -> int:
+        # Respects the ruleset score cutoff so the nav badge counts only items that actually show.
+        where, params = self._queue_filter(False, None, None)
+        sql = ("SELECT COUNT(*) AS n FROM evaluations e JOIN items i ON i.hash = e.hash"
+               + where + " AND e.seen = 0")
         with self._lock:
-            return int(
-                self._conn.execute(
-                    "SELECT COUNT(*) AS n FROM evaluations WHERE flagged = 1 AND seen = 0"
-                ).fetchone()["n"]
-            )
+            return int(self._conn.execute(sql, params).fetchone()["n"])
 
     def mark_seen(self, item_hash: str) -> None:
         with self._lock:

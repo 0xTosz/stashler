@@ -10,11 +10,12 @@ rules.local.toml
 stashler.ico
 *.spec.bak
 
-# Archetype sets — produced by the separate (private) archetype_miner repo and uploaded
-# in the UI; not source of this repo.
+# Archetype sets — the user's working copy + restore-point + upgrade backup live in the data
+# dir (the dev cwd); the packaged default (stasher/evaluate/default_archetype_set.yaml) IS tracked.
 *.generated.yaml
 archetype_set.yaml
 archetype_set.default.yaml
+archetype_set.bak.yaml
 
 # Local scratch: loot filters, API/page dumps, screenshots
 FilterBlade/

@@ -57,6 +57,63 @@ def test_model_item_is_per_affix_no_aggregation():
     assert mi["mods"][mod_key("+40% to Fire Resistance")] == 40.0
 
 
+def test_model_item_demerges_summed_line_and_counts_real_affixes():
+    """Two prefixes that both roll Spirit render as one summed line; extended.mods exposes the
+    two underlying affixes. The de-merge must count 2 affixes (not 1 display line) and key the
+    stat at a single real roll (range midpoint), not the inflated 64% sum."""
+    spirit = "explicit.stat_spirit"
+    item = {
+        "frameType": 2, "baseType": "Stoic Sceptre", "typeLine": "Stoic Sceptre",
+        "explicitMods": ["64% increased Spirit"],
+        "extended": {
+            "baseClass": "Sceptres",
+            "mods": {"explicit": [
+                {"name": "Marquess'", "tier": "P5",
+                 "magnitudes": [{"hash": spirit, "min": "39", "max": "44"}]},
+                {"name": "Patron's", "tier": "P7",
+                 "magnitudes": [{"hash": spirit, "min": "20", "max": "25"}]},
+            ]},
+            "hashes": {"explicit": [[spirit, [0, 1]]]},
+        },
+    }
+    mi = model_item(item)
+    assert mi["mod_count"] == 2                              # two affixes, not one display line
+    key = mod_key("64% increased Spirit")
+    assert list(mi["mods"]) == [key]                         # collapse to the one stat key
+    assert mi["mods"][key] == pytest.approx(41.5)            # max real roll, NOT the 64 sum
+
+
+def test_model_item_hybrid_split_lines_count_one_affix():
+    """A hybrid affix (Spirit + Mana) the site splits across two lines must count as ONE affix;
+    each single-source line keeps its real rolled magnitude."""
+    spirit, mana = "explicit.stat_spirit", "explicit.stat_mana"
+    item = {
+        "frameType": 2, "baseType": "Stoic Sceptre", "typeLine": "Stoic Sceptre",
+        "explicitMods": ["28% increased Spirit", "+35 to maximum Mana"],
+        "extended": {
+            "baseClass": "Sceptres",
+            "mods": {"explicit": [
+                {"name": "Envoy's", "tier": "P3", "magnitudes": [
+                    {"hash": spirit, "min": "27", "max": "30"},
+                    {"hash": mana, "min": "34", "max": "37"}]},
+            ]},
+            "hashes": {"explicit": [[spirit, [0]], [mana, [0]]]},
+        },
+    }
+    mi = model_item(item)
+    assert mi["mod_count"] == 1                              # one affix despite two display lines
+    assert mi["mods"][mod_key("28% increased Spirit")] == 28.0
+    assert mi["mods"][mod_key("+35 to maximum Mana")] == 35.0
+
+
+def test_model_item_falls_back_to_text_without_extended_mods():
+    """Unidentified / structureless listings (no extended.mods) keep the rendered-text path:
+    one key per line at its rendered magnitude."""
+    mi = model_item(boots_item())                           # boots_item carries no extended.mods
+    assert mi["mod_count"] == 2
+    assert mi["mods"][MS_KEY] == 35.0 and mi["mods"][LIFE_KEY] == 95.0
+
+
 _FUNGIBLE_YAML = """
 meta: {league: test}
 mod_families:

@@ -15,7 +15,7 @@ from .backfill import run_backfill
 from .client import TradeClient
 from .config import Config, __version__
 from .evaluate import Evaluator
-from .evaluate.rules import seed_user_rules
+from .evaluate.rules import install_archetype_set, seed_user_rules
 from .live import run_live
 from .pipeline import Pipeline
 from .ratelimit import RateLimiter
@@ -44,6 +44,9 @@ class Stasher:
         # Seed starter rules + example filter into the writable location on first run
         # (so the packaged app ships with a working item filter, not an empty editor).
         seed_user_rules(config.rules_path, config.data_dir)
+        # Install/refresh the packaged graded archetype set (fresh install, or replace an
+        # outdated 0.1.x set — backing the old one up). Before the Evaluator so it loads it.
+        install_archetype_set(config.rules_path, config.data_dir, self.store)
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
         self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None

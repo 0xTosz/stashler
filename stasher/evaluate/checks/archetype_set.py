@@ -14,9 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import base as _base
-from ..affix_norm import clean_mod_text, defence_types, mod_key, mod_magnitude
-from ..archetype_model import ArchetypeSet, value_to_tier
-from ..itemdata import base_type, item_class, rarity
+from ..affix_norm import defence_types
+from ..archetype_model import ArchetypeSet, rarity_amp, value_to_tier
+from ..itemdata import base_type, explicit_affix_mods, item_class, rarity
 
 CheckResult = _base.CheckResult
 
@@ -29,15 +29,14 @@ def model_item(item: dict) -> dict:
     """Project a GGG ``/fetch`` item into the model's input: class/rarity/base, the base's defence
     types (segment gate), explicit affix count (open-slot/craft reasoning), and a
     ``{mod_key: magnitude}`` map (same normalization as the miner). Every affix is its own unit;
-    fungible elemental resistances are grouped by the set's ``ele_res`` family at match time."""
-    explicit = item.get("explicitMods") or []
-    mods: dict[str, float | None] = {}
-    for raw in explicit:
-        clean = clean_mod_text(raw)
-        if clean:
-            mods.setdefault(mod_key(clean), mod_magnitude(clean))
+    fungible elemental resistances are grouped by the set's ``ele_res`` family at match time.
+
+    Affixes are read per *underlying* affix via :func:`explicit_affix_mods` (de-merging the trade
+    site's lossy rendering -- summed lines, split hybrids) so count and magnitudes match what the
+    miner mined, not the rendered text."""
+    mods, affix_count = explicit_affix_mods(item)
     return {"class": item_class(item), "rarity": rarity(item), "base": base_type(item),
-            "defence": defence_types(item), "mod_count": len(explicit), "mods": mods}
+            "defence": defence_types(item), "mod_count": affix_count, "mods": mods}
 
 
 class ArchetypeSetChecker:
@@ -50,17 +49,23 @@ class ArchetypeSetChecker:
     def check(self, item: dict) -> list[CheckResult]:
         scored = self.aset.score_item(model_item(item))
         matches = scored["matches"]
-        if not matches:
-            return []
-        # The item's stored score is the aggregate **overall** (best rule + a capped breadth
-        # bonus from extra distinct matches). The headline carries that score; the top few rules
-        # follow as score-less breakdown reasons (each tagged with its contribution + coverage).
         overall = scored["overall"]
+        # No archetype match AND no rarity floor → nothing to surface. A floor-only item (a brick
+        # carrying a rare, desirable mod) still flags, headlined as a rare-mod find.
+        if not matches and overall <= 0:
+            return []
+        # The item's stored score is the aggregate **overall** (best rule + a capped breadth bonus,
+        # or a rare-mod value floor). The headline carries that score; the top few rules follow as
+        # score-less breakdown reasons (each tagged with its contribution + coverage).
         n = len(matches)
         headline = f"Archetype {value_to_tier(overall)} ({overall:.2f})"
         if n > 1:
             headline += f" · {n} matches"
-        out: list[CheckResult] = [CheckResult("archetype_set", headline, score=overall)]
+        elif not matches:
+            headline += " · rare mod"
+        # The headline carries the *true* match total (n); only TOP_K per-rule reasons follow, so
+        # the count must come from here, not from the surfaced reasons.
+        out: list[CheckResult] = [CheckResult("archetype_set", headline, score=overall, count=n)]
         for m in matches[:TOP_K_REASONS]:
             name = self._name_by_id.get(m["archetype"], m["archetype"])
             cov = "full" if m["full"] else f"{m['satisfied']}/{m['required']}"
@@ -110,9 +115,30 @@ class ArchetypeSetChecker:
                 "bases_mode": a.bases.mode if a else None,
                 "requires": reqs,
             })
+        # Rarity-floor itemization (debug): the spawn-weight math behind the value floor — only the
+        # best **synergy group** (mods co-occurring in one mined archetype) sums, so the popup shows
+        # which build won and which trophies actually counted (vs. surfaced-but-uncounted ones).
+        sc = self.aset.scoring
+        cat = self.aset.mods.get(mi.get("class") or "", {})
+        trophies = self.aset.rarity_trophies(mi)
+        group_sum, group_arch, group_keys = self.aset.best_synergy_group(mi, trophies)
+        gset = set(group_keys)
+        rarity_rows = []
+        for k, t in trophies.items():
+            info = cat.get(k)
+            rarity_rows.append({"key": k, "magnitude": mods.get(k), "freq": round(info.mod_frequency(), 4),
+                                "amp": round(rarity_amp(info.mod_frequency(), sc), 2),
+                                "desirability": round(info.desirability, 2),
+                                "tier_quality": round(info.tier_quality(mods.get(k)), 2),
+                                "trophy": round(t, 3), "counted": k in gset})
+        rarity_rows.sort(key=lambda r: (r["counted"], r["trophy"]), reverse=True)
         return {"score": scored["overall"], "overall": scored["overall"],
                 "tier": value_to_tier(scored["overall"]),
                 "peak": scored["peak"], "breadth": scored["breadth"],
+                "floor": scored.get("floor", 0.0),
+                "scoring": sc.to_dict(),
+                "rarity": {"rows": rarity_rows, "total": round(group_sum, 3),
+                           "build": self._name_by_id.get(group_arch, group_arch)},
                 "matches": matches, "targets": self.aset.upgrade_targets(mi), "item": mi}
 
 

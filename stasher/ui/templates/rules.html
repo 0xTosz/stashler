@@ -10,6 +10,13 @@
 {% if rules_error %}<p class="error">⚠ {{ rules_error }}</p>{% endif %}
 {% if rules_message %}<p class="ok">{{ rules_message }}</p>{% endif %}
 
+{% if archive_stale and not rules_message %}
+<form method="post" action="{{ url_for('rules_reevaluate') }}" class="stale-banner">
+  <span>⚠ Some stored items were scored under older rules/archetypes — re-evaluate to refresh the queue.</span>
+  <button type="submit">Re-evaluate archive</button>
+</form>
+{% endif %}
+
 {# --- upload / restore (separate forms) --- #}
 <div class="rules-actions">
   <form method="post" action="{{ url_for('rules_upload') }}" id="upload-form" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -42,12 +49,7 @@
     <label>Roll influence
       <input type="number" name="scoring.roll_influence" min="0" max="1" step="0.05"
              value="{{ '%.2f'|format(aset.scoring.roll_influence) }}">
-      <small class="muted">how much the item's rolled magnitude moves the score (0 = ignore roll, 1 = full)</small>
-    </label>
-    <label>Magic roll influence
-      <input type="number" name="scoring.magic_roll_influence" min="0" max="1" step="0.05"
-             value="{{ '%.2f'|format(aset.scoring.magic_roll_influence) }}">
-      <small class="muted">same, for Magic craft bases — keep higher (only the best 2 rolls matter)</small>
+      <small class="muted">weight of the open-slot craft bonus (a finished item is scored on tiers alone; 0 = no craft credit)</small>
     </label>
     <div class="tierw">Tier weights:
       {% for t in ['T1','T2','T3','below'] %}
@@ -67,10 +69,45 @@
              value="{{ '%.2f'|format(aset.scoring.craft_credit) }}">
       <small class="muted">value of a missing affix that fits an open slot (a finishable partial) vs actually having it</small>
     </label>
+    <label>Craft target
+      <input type="number" name="scoring.craft_target" min="1" max="6" step="1"
+             value="{{ aset.scoring.craft_target }}">
+      <small class="muted">slots a finished item crafts toward (open-slot headroom that earns the craft bonus; 6 = full rare)</small>
+    </label>
+    <label>Magic completion
+      <input type="number" name="scoring.magic_completion" min="0" max="1" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.magic_completion) }}">
+      <small class="muted">how fully a Magic craft base is credited for its kept affixes (open slots = upside; &lt;1 keeps it under a finished rare)</small>
+    </label>
+    <label>Magic solo
+      <input type="number" name="scoring.magic_solo" min="0" max="1" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.magic_solo) }}">
+      <small class="muted">lock-in for a Magic base with a single T1 affix vs a two-affix one (slot is cheap to augment, 2nd good roll isn't guaranteed)</small>
+    </label>
     <label>Breadth cap
       <input type="number" name="scoring.breadth_cap" min="0" max="1" step="0.05"
              value="{{ '%.2f'|format(aset.scoring.breadth_cap) }}">
       <small class="muted">max bonus a universal base gets from matching many distinct rules</small>
+    </label>
+    <label>Rarity ref
+      <input type="number" name="scoring.rarity_ref" min="0.001" max="1" step="0.01"
+             value="{{ '%.3f'|format(aset.scoring.rarity_ref) }}">
+      <small class="muted">common-mod presence frequency (Σweights/pool); mods rarer than this earn a premium floor</small>
+    </label>
+    <label>Rarity gamma
+      <input type="number" name="scoring.rarity_gamma" min="0" max="3" step="0.05"
+             value="{{ '%.2f'|format(aset.scoring.rarity_gamma) }}">
+      <small class="muted">how steeply rarity amplifies value (higher = rarer mods boost harder)</small>
+    </label>
+    <label>Rarity cap
+      <input type="number" name="scoring.rarity_cap" min="1" max="20" step="0.5"
+             value="{{ '%.1f'|format(aset.scoring.rarity_cap) }}">
+      <small class="muted">max rarity multiplier for an ultra-rare mod</small>
+    </label>
+    <label>Rarity floor scale
+      <input type="number" name="scoring.rarity_floor_scale" min="0.1" max="20" step="0.1"
+             value="{{ '%.1f'|format(aset.scoring.rarity_floor_scale) }}">
+      <small class="muted">smaller = a single rare desirable mod reaches a high value floor faster</small>
     </label>
   </fieldset>
 

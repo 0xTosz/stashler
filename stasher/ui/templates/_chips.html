@@ -1,0 +1,18 @@
+{# Per-checker chips — one chip per checker that fired. Shared by the queue list card and the
+   unified detail card. Import: {% from "_chips.html" import render_chips %}
+   The Ruleset chip is tinted by the item's tier (gold/green/blue/grey) and reads
+   "Ruleset  S 0.81  12 rules"; other checkers read "Filter  2 matches". #}
+{% macro render_chips(chips) %}
+<div class="chips">
+  {% for ch in chips %}
+  <span class="chip{{ ' chip-score' if ch.tier }}"
+        style="--chip:{{ ch.color }}{% if ch.tier %};--tier:{{ ch.tier_color }}{% endif %}" title="{{ ch.title }}">
+    <span class="chip-label">{{ ch.label }}</span>
+    {% if ch.tier %}<span class="chip-score-v">{{ ch.tier }} {{ '%.2f'|format(ch.score) }}</span>{% endif %}
+    <span class="chip-count">{{ ch.text }}</span>
+  </span>
+  {% else %}
+  <span class="muted">—</span>
+  {% endfor %}
+</div>
+{% endmacro %}

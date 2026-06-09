@@ -19,6 +19,9 @@ class CheckResult:
     rule_name: str
     explanation: str
     score: float | None = None
+    # Optional total-match count for the checker (e.g. archetype_set's full rule-match total,
+    # which exceeds the few per-rule reasons it surfaces). Drives the queue chip's count/sort.
+    count: int | None = None
 
 
 @runtime_checkable

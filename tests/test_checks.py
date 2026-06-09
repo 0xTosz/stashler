@@ -9,6 +9,7 @@ from stasher.evaluate.checks import regex_check, unique_roll
 from stasher.evaluate.evaluator import Evaluator
 from stasher.evaluate.itemdata import (
     clean_mod_text,
+    explicit_display,
     explicit_roll_percents,
     item_class,
     stash_regex,
@@ -74,6 +75,71 @@ def test_clean_mod_text_strips_markup():
     assert clean_mod_text("53% increased [Physical] Damage") == "53% increased Physical Damage"
     assert clean_mod_text("[Critical|Critical Hit] Chance") == "Critical Hit Chance"
     assert clean_mod_text("Adds 8 to 11 [Physical|Physical] Damage") == "Adds 8 to 11 Physical Damage"
+
+
+def test_explicit_display_groups_hybrid_lines_into_one_affix():
+    # A hybrid affix (phys + accuracy, like Dragon Edge's "Conqueror's") the site renders as two
+    # lines must collapse to ONE display entry — both lines under a single tier badge — while the
+    # other single-stat affixes stay one entry each.
+    phys, acc, spd = "explicit.stat_phys", "explicit.stat_acc", "explicit.stat_spd"
+    item = {
+        "frameType": 2, "baseType": "Spiked Spear",
+        "explicitMods": ["55% increased [Physical] Damage", "+130 to [Accuracy|Accuracy] Rating",
+                         "28% increased [Attack] Speed"],
+        "extended": {
+            "mods": {"explicit": [
+                {"name": "Conqueror's", "tier": "P3", "magnitudes": [
+                    {"hash": phys, "min": "55", "max": "64"},
+                    {"hash": acc, "min": "124", "max": "149"}]},
+                {"name": "of the Concussion", "tier": "S1", "magnitudes": [
+                    {"hash": spd, "min": "27", "max": "30"}]},
+            ]},
+            "hashes": {"explicit": [[phys, [0]], [acc, [0]], [spd, [1]]]},
+        },
+    }
+    disp = explicit_display(item)
+    assert len(disp) == 2                                       # two affixes, not three lines
+    assert disp[0]["hybrid"] and disp[0]["tier"] == "P3"
+    assert disp[0]["lines"] == ["55% increased Physical Damage", "+130 to Accuracy Rating"]
+    assert not disp[1]["hybrid"] and disp[1]["lines"] == ["28% increased Attack Speed"]
+
+
+def test_explicit_display_keeps_hybrid_whose_stat_was_summed_away():
+    # Pain Pile case: a hybrid (regen + light radius) whose regen half is SUMMED into one line with
+    # a separate standalone regen affix. Light radius must still show grouped with the hybrid (never
+    # a phantom standalone mod); the summed stat is re-stated per-affix as a ≈ midpoint estimate.
+    regen, light = "explicit.stat_regen", "explicit.stat_light"
+    item = {
+        "frameType": 2, "baseType": "Voltaic Staff",
+        "explicitMods": ["121% increased Mana Regeneration Rate",
+                         "15% increased [LightRadius|Light Radius]"],
+        "extended": {
+            "mods": {"explicit": [
+                {"name": "of Nirvana", "tier": "S1",
+                 "magnitudes": [{"hash": regen, "min": "90", "max": "104"}]},
+                {"name": "of the Hearth", "tier": "S2", "magnitudes": [
+                    {"hash": regen, "min": "17", "max": "23"},
+                    {"hash": light, "min": "12", "max": "18"}]},
+            ]},
+            "hashes": {"explicit": [[regen, [0, 1]], [light, [1]]]},
+        },
+    }
+    disp = explicit_display(item)
+    assert len(disp) == 2                                       # two affixes, not three entries
+    standalone = next(d for d in disp if not d["hybrid"])
+    hybrid = next(d for d in disp if d["hybrid"])
+    assert standalone["lines"] == ["≈ 97% increased Mana Regeneration Rate"]   # midpoint of 90–104
+    assert hybrid["tier"] == "S2"
+    assert hybrid["lines"][0] == "≈ 20% increased Mana Regeneration Rate"      # its summed half
+    assert hybrid["lines"][1] == "15% increased Light Radius"                  # its sole half, real
+
+
+def test_explicit_display_falls_back_to_one_entry_per_line():
+    # No structured mod data → one entry per rendered line, no grouping, no tier.
+    item = {"explicitMods": ["+50 to maximum Life", "+30% to Fire Resistance"]}
+    disp = explicit_display(item)
+    assert [d["lines"][0] for d in disp] == ["+50 to maximum Life", "+30% to Fire Resistance"]
+    assert all(not d["hybrid"] and d["tier"] == "" for d in disp)
 
 
 def test_explicit_roll_percents_pairs_values_to_ranges():
@@ -389,6 +455,37 @@ def test_seed_user_rules_creates_starter_rules_and_filter(tmp_path):
     assert "mine" in target.read_text(encoding="utf-8")
 
 
+def test_install_archetype_set_fresh_then_upgrade_with_backup(tmp_path):
+    from stasher.evaluate.rules import (
+        ARCHETYPE_SET_BAK_FILENAME,
+        ARCHETYPE_SET_VERSION,
+        archetype_set_default_path,
+        archetype_set_path,
+        install_archetype_set,
+    )
+
+    store = Store(str(tmp_path / "t.db"))
+    rules_path = str(tmp_path / "rules.toml")
+
+    # fresh install: working + restore-point written, version marker stamped
+    assert install_archetype_set(rules_path, str(tmp_path), store) == "installed"
+    working = archetype_set_path(tmp_path)
+    assert working.exists() and archetype_set_default_path(tmp_path).exists()
+    assert store.get_meta("archetype_set_version") == ARCHETYPE_SET_VERSION
+
+    # already current → no-op (preserves user customizations)
+    assert install_archetype_set(rules_path, str(tmp_path), store) is None
+
+    # simulate an outdated install (custom set + stale marker, like a 0.1.x upgrade)
+    working.write_text("custom: yes\n", encoding="utf-8", newline="")
+    store.set_meta("archetype_set_version", "0.1.0")
+    assert install_archetype_set(rules_path, str(tmp_path), store) == "upgraded"
+    assert (tmp_path / ARCHETYPE_SET_BAK_FILENAME).read_text(encoding="utf-8").strip() == "custom: yes"
+    assert "custom: yes" not in working.read_text(encoding="utf-8")     # replaced by packaged set
+    assert store.get_meta("archetype_set_version") == ARCHETYPE_SET_VERSION
+    store.close()
+
+
 def test_save_rules_rejects_bad_pattern_without_writing(tmp_path):
     import pytest
 
@@ -401,3 +498,31 @@ def test_save_rules_rejects_bad_pattern_without_writing(tmp_path):
     with pytest.raises(ValueError):
         ev.save_rules('[[regex]]\nname = "bad"\npattern = "("\ntargets = ["affixes"]\n', "")
     assert rules.read_text(encoding="utf-8") == before  # unchanged
+
+
+def test_evaluate_item_attributes_results_to_checkers():
+    """Each result carries its checker name (drives the queue's per-checker chips/filters/sorts);
+    reasons/rules/score stay derived for back-compat."""
+    from stasher.evaluate.checks.base import CheckResult
+
+    class Fake:
+        def __init__(self, name, results):
+            self.name = name
+            self._results = results
+
+        def check(self, item):
+            return self._results
+
+    aset = Fake("archetype_set", [
+        CheckResult("archetype_set", "Archetype A (0.70)", score=0.7),
+        CheckResult("archetype_set:x", "Rule X · 4/4", score=None),
+    ])
+    filt = Fake("item_filter", [CheckResult("filter", "Filter matched: Bows")])
+    ev = evaluate_item({}, [aset, filt])
+
+    assert ev.flagged and ev.score == 0.7
+    assert [r["checker"] for r in ev.results] == ["archetype_set", "archetype_set", "item_filter"]
+    assert ev.reasons == ["Archetype A (0.70)", "Rule X · 4/4", "Filter matched: Bows"]
+    assert ev.rules == ["archetype_set", "archetype_set:x", "filter"]
+    # nothing fires → not flagged, no score
+    assert evaluate_item({}, [Fake("regex", [])]).flagged is False

@@ -143,10 +143,11 @@
     const td = document.createElement('td');
     td.colSpan = 9; td.innerHTML = '<span class="muted">loading…</span>';
     dtr.appendChild(td); tr.after(dtr);
-    if (cardCache[hash]) { td.innerHTML = cardCache[hash]; return; }
+    if (cardCache[hash]) { td.innerHTML = cardCache[hash]; window.wireDetailCard(td); return; }
     try {
       const html = await (await fetch('/records/' + hash + '/card')).text();
       cardCache[hash] = html; td.innerHTML = html;
+      window.wireDetailCard(td);
     } catch (e) { td.innerHTML = '<span class="error">failed to load</span>'; }
   }
 
