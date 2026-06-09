@@ -10,6 +10,9 @@ rules.local.toml
 stashler.ico
 *.spec.bak
 
+# Internal-only dev/release process notes (not shipped in the public repo)
+RELEASING.md
+
 # Archetype sets — the user's working copy + restore-point + upgrade backup live in the data
 # dir (the dev cwd); the packaged default (stasher/evaluate/default_archetype_set.yaml) IS tracked.
 *.generated.yaml
