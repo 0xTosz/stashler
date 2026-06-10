@@ -34,7 +34,7 @@ from . import aggregates, pseudo
 DISCLAIMER = "Price reflects the base item; runes, sockets and corruption are not valued."
 
 # Coarse, replace-with-eval thresholds.
-_RELAX_FRACTION = 0.8     # TODO(eval): use real tier-band floors instead of a flat fraction.
+_RELAX_FRACTION = 0.8     # fallback when an affix carries no tier range (relax_floor from extended).
 _FINISHED_AFFIXES = 5     # TODO(eval): use free_slots/headroom, not a rendered-affix count.
 _MAX_FILTERS = 4
 
@@ -54,8 +54,10 @@ def _relax(value: float) -> float:
 
 def _explicit_filters(item: dict, grade: Grader | None, *, exclude: set[str]) -> list[StatFilter]:
     """One stat filter per explicit stat id (value = de-merged total), ranked by desirability
-    (``grade``) then magnitude, excluding ids already consumed by a pseudo."""
+    (``grade``) then magnitude, excluding ids already consumed by a pseudo. ``relax_floor`` is
+    the affix's real tier minimum (from ``extended``), falling back to a fraction of the roll."""
     totals = pseudo.item_stat_totals(item)
+    floors = pseudo.item_stat_floors(item)
     ranked = sorted(
         ((sid, val) for sid, val in totals.items() if sid not in exclude),
         key=lambda kv: ((grade(kv[0]) if grade else 0.0), kv[1]),
@@ -63,7 +65,8 @@ def _explicit_filters(item: dict, grade: Grader | None, *, exclude: set[str]) ->
     )
     out: list[StatFilter] = []
     for sid, val in ranked:
-        out.append(StatFilter(TARGET_STATS, min=round(val, 2), relax_floor=_relax(val),
+        out.append(StatFilter(TARGET_STATS, min=round(val, 2),
+                              relax_floor=floors.get(sid) or _relax(val),
                               droppable=True, id=sid, group=GROUP_EXPLICIT))
     return out
 
@@ -73,7 +76,7 @@ def _pseudo_filters(item: dict) -> tuple[list[StatFilter], set[str]]:
     out: list[StatFilter] = []
     consumed: set[str] = set()
     for ps in pseudo.pseudos_for(item):
-        out.append(StatFilter(TARGET_STATS, min=ps.value, relax_floor=_relax(ps.value),
+        out.append(StatFilter(TARGET_STATS, min=ps.value, relax_floor=ps.floor or _relax(ps.value),
                               droppable=True, id=ps.pseudo_id, group=GROUP_PSEUDO))
         consumed.update(ps.components)
     return out, consumed

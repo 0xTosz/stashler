@@ -23,13 +23,13 @@ from ..evaluate import itemdata
 _RANGE_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)")
 _NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
-# trade2 weapon_filters fields (confirmed: dps/pdps/edps are searchable).
-WEAPON_TARGET = {"dps": "weapon_filters.dps", "pdps": "weapon_filters.pdps",
-                 "edps": "weapon_filters.edps"}
-# TODO(phase-0): confirm the PoE2 defence filter group name + fields against /data/filters.
-# Provisional; isolated so it's a one-line fix once the harvest pins the real ids.
-DEFENCE_TARGET = {"armour": "armour_filters.ar", "energy_shield": "armour_filters.es",
-                  "evasion": "armour_filters.ev"}
+# PoE2 trade puts both weapon DPS and defence totals in ONE `equipment_filters` group
+# (fields: ar/es/ev/dps/pdps/edps/aps/crit/block/...). Confirmed from EE2's
+# trade/pathofexile-trade.ts (the Phase-0 harvest).
+WEAPON_TARGET = {"dps": "equipment_filters.dps", "pdps": "equipment_filters.pdps",
+                 "edps": "equipment_filters.edps"}
+DEFENCE_TARGET = {"armour": "equipment_filters.ar", "energy_shield": "equipment_filters.es",
+                  "evasion": "equipment_filters.ev"}
 
 
 def _avg(text: str) -> float:

@@ -78,7 +78,7 @@ def _plan():
         STRATEGY_RARE_FINISHED,
         type_filters={"filters": {"rarity": {"option": "rare"}}},
         filters=[
-            StatFilter("armour_filters.es", min=400, relax_floor=300, droppable=False,
+            StatFilter("equipment_filters.es", min=400, relax_floor=300, droppable=False,
                        group="aggregate"),
             StatFilter(TARGET_STATS, min=80, relax_floor=60, droppable=True,
                        id="explicit.stat_life", group=GROUP_EXPLICIT),
@@ -91,7 +91,7 @@ def test_compose_routes_groups_and_omits_account():
     plan = _plan()
     body = query.body(plan, plan.filters)
     assert body["type_filters"]["filters"]["rarity"]["option"] == "rare"
-    assert body["armour_filters"]["filters"]["es"]["min"] == 400
+    assert body["equipment_filters"]["filters"]["es"]["min"] == 400
     assert body["stats"][0]["filters"][0]["id"] == "explicit.stat_life"
     assert body["_type"] == "Vaal Regalia"
     # The whole body fragment must never carry a trade_filters/account block.
@@ -109,7 +109,7 @@ def test_ladder_relaxes_then_drops_then_floor():
     assert relaxed["stats"][0]["filters"][0]["value"]["min"] == 60  # relaxed to floor
     # The dropped rung keeps the non-droppable aggregate, removes the droppable life stat.
     dropped = next(b for lbl, b in rungs if lbl == query.RUNG_DROPPED)
-    assert "stats" not in dropped and dropped["armour_filters"]["filters"]["es"]["min"] == 300
+    assert "stats" not in dropped and dropped["equipment_filters"]["filters"]["es"]["min"] == 300
     # The floor rung drops the exact base.
     floor = next(b for lbl, b in rungs if lbl == query.RUNG_FLOOR)
     assert "_type" not in floor
@@ -256,6 +256,32 @@ def test_defence_totals_from_properties():
     assert aggregates.defence_totals(item) == {"energy_shield": 520.0}
 
 
+# --- pseudo aggregation on the real harvested ids ----------------------
+
+def _ext(*mags):
+    return {"extended": {"mods": {"explicit": [{"magnitudes": list(mags)}]}}}
+
+
+def test_pseudo_total_ele_res_sums_components():
+    from stasher.pricing import pseudo
+    # Real trade ids from the harvested table: fire (mult 1) + cold (mult 1).
+    item = _ext({"hash": "explicit.stat_3372524247", "min": "28", "max": "32"},  # fire
+                {"hash": "explicit.stat_4220027924", "min": "23", "max": "27"})  # cold
+    ps = {p.pseudo_id: p for p in pseudo.pseudos_for(item)}
+    ele = ps["pseudo.pseudo_total_elemental_resistance"]
+    assert ele.value == 55  # 30 + 25
+    assert set(ele.components) == {"explicit.stat_3372524247", "explicit.stat_4220027924"}
+
+
+def test_pseudo_all_ele_res_uses_multiplier():
+    from stasher.pricing import pseudo
+    # "+x% to all Elemental Resistances" has multiplier 3 toward total elemental resistance.
+    item = _ext({"hash": "explicit.stat_2901986750", "min": "14", "max": "16"})  # all-ele, ~15
+    ele = next(p for p in pseudo.pseudos_for(item)
+               if p.pseudo_id == "pseudo.pseudo_total_elemental_resistance")
+    assert ele.value == 45  # 15 * 3
+
+
 # --- appraisal service + data interlock --------------------------------
 
 def _magic_ring():
@@ -267,20 +293,27 @@ def _magic_ring():
     }
 
 
-def test_data_ready_interlock():
-    from stasher.pricing.appraise import data_ready
+def test_data_ready_interlock(monkeypatch):
+    from stasher.pricing import appraise
     store = _store()
-    ready, _ = data_ready(store)
-    assert not ready                      # seed tables carry _example placeholders
+    # Shipped data is real (harvested) -> ready. Simulate unharvested placeholders to prove the
+    # interlock blocks, and the force-ready escape hatch overrides it.
+    assert appraise.data_ready(store)[0]
+    monkeypatch.setattr(appraise._pseudo, "_rules",
+                        lambda: {"aggregates": [{"_example": True}], "empty_slots": {}})
+    ready, reason = appraise.data_ready(store)
+    assert not ready and "Phase 0" in reason
     store.set_setting("pricing_force_ready", "1")
-    assert data_ready(store)[0]           # escape hatch for testing the wiring
+    assert appraise.data_ready(store)[0]  # escape hatch overrides the placeholder check
     store.close()
 
 
-def test_service_request_refused_until_ready():
-    from stasher.pricing.appraise import PricingService
+def test_service_request_refused_when_unharvested(monkeypatch):
+    from stasher.pricing import appraise
+    monkeypatch.setattr(appraise._pseudo, "_rules",
+                        lambda: {"aggregates": [{"_example": True}], "empty_slots": {}})
     store = _store()
-    svc = PricingService(store, FakeSource([50], [(5, "exalted")] * 10), lambda: "Std")
+    svc = appraise.PricingService(store, FakeSource([50], [(5, "exalted")] * 10), lambda: "Std")
     res = svc.request("h1", _magic_ring())
     assert res["ok"] is False and "Phase 0" in res["reason"]
     store.close()

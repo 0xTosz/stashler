@@ -31,44 +31,59 @@ def _rules() -> dict:
 class Pseudo:
     pseudo_id: str
     value: float
+    floor: float                 # the same sum using each component's tier minimum (relax target)
     components: tuple[str, ...]  # the real stat ids consumed (so the plan can avoid double-counting)
 
 
-def item_stat_totals(item: dict) -> dict[str, float]:
-    """Sum each explicit stat id's magnitude across the item's affixes.
-
-    Reads ``extended.mods.explicit[].magnitudes[]`` ({hash, min, max}); a stat's value is the
-    sum over affixes of its range midpoint (the de-merged per-affix share — see
-    :func:`stasher.evaluate.itemdata.explicit_affix_mods`). Falls back to {} without
-    structured mod data."""
-    ext = item.get("extended") or {}
-    emods = (ext.get("mods") or {}).get("explicit") or []
-    totals: dict[str, float] = {}
+def _stat_agg(item: dict, pick) -> dict[str, float]:
+    """Sum ``pick(mag)`` for each explicit stat id across the item's affixes (from
+    ``extended.mods.explicit[].magnitudes[]``). {} without structured mod data."""
+    emods = ((item.get("extended") or {}).get("mods") or {}).get("explicit") or []
+    out: dict[str, float] = {}
     for mod in emods:
         for mag in mod.get("magnitudes") or []:
             h = mag.get("hash")
             if not h:
                 continue
             try:
-                mid = (float(mag["min"]) + float(mag["max"])) / 2.0
+                out[h] = out.get(h, 0.0) + pick(mag)
             except (TypeError, ValueError, KeyError):
                 continue
-            totals[h] = totals.get(h, 0.0) + mid
-    return totals
+    return out
+
+
+def item_stat_totals(item: dict) -> dict[str, float]:
+    """Each explicit stat id's value = sum over affixes of its range **midpoint** (the de-merged
+    per-affix share — see :func:`stasher.evaluate.itemdata.explicit_affix_mods`)."""
+    return _stat_agg(item, lambda m: (float(m["min"]) + float(m["max"])) / 2.0)
+
+
+def item_stat_floors(item: dict) -> dict[str, float]:
+    """Each explicit stat id's **tier floor** = sum over affixes of its magnitude minimum (the
+    lowest roll of the rolled tier). Used as the ladder's ``relax_floor`` — searching down to
+    the tier floor keeps same-tier comparables instead of dropping the mod."""
+    return _stat_agg(item, lambda m: float(m["min"]))
 
 
 def pseudos_for(item: dict) -> list[Pseudo]:
-    """The pseudo aggregates an item qualifies for (≥ ``min_components`` of a rule present)."""
+    """The pseudo aggregates an item qualifies for (≥ ``min_components`` of a rule present).
+
+    Each component carries a value ``mult`` (e.g. a single "+x% to all Elemental Resistances"
+    contributes ``3·x`` to total elemental resistance), matching EE2's PSEUDO_RULES."""
     totals = item_stat_totals(item)
+    floors = item_stat_floors(item)
     out: list[Pseudo] = []
     for rule in _rules().get("aggregates") or []:
-        comps = [c for c in rule.get("components") or [] if c in totals]
-        if len(comps) < int(rule.get("min_components", 1)):
+        present = [(c["id"], c.get("mult", 1)) for c in (rule.get("components") or [])
+                   if c.get("id") in totals]
+        if len(present) < int(rule.get("min_components", 1)):
             continue
-        summed = sum(totals[c] for c in comps)
+        summed = sum(totals[cid] * mult for cid, mult in present)
         if summed <= 0:
             continue
-        out.append(Pseudo(rule["pseudo_id"], round(summed, 2), tuple(comps)))
+        floor = sum(floors.get(cid, 0.0) * mult for cid, mult in present)
+        out.append(Pseudo(rule["pseudo_id"], round(summed, 2), round(floor, 2),
+                          tuple(cid for cid, _ in present)))
     return out
 
 

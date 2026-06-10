@@ -47,19 +47,32 @@ def test_status_includes_pricing():
         stasher.close()
 
 
-def test_price_lookup_and_refusal():
+def test_price_lookup_and_refusal(monkeypatch):
+    # Force the unharvested state so the POST path is exercised WITHOUT issuing a live search.
+    from stasher.pricing import appraise
+    monkeypatch.setattr(appraise._pseudo, "_rules",
+                        lambda: {"aggregates": [{"_example": True}], "empty_slots": {}})
     stasher, app = _app()
     try:
         _insert_item(stasher)
         client = app.test_client()
         look = client.get("/api/price/abc").get_json()
         assert look["ok"] and look["status"] == "miss"
-        assert look["can_refresh"] is False  # Phase-0 interlock blocks live pricing
-        # POST a fresh check -> refused (no network issued).
+        assert look["can_refresh"] is False  # interlock blocks live pricing
         post = client.post("/api/price/abc").get_json()
         assert post["ok"] is False and "Phase 0" in post["reason"]
-        # Unknown item -> 404.
-        assert client.get("/api/price/nope").status_code == 404
+        assert client.get("/api/price/nope").status_code == 404  # unknown item
+    finally:
+        stasher.close()
+
+
+def test_price_data_ready_after_harvest():
+    # With the shipped (harvested) data, a lookup reports the feature is ready to price.
+    stasher, app = _app()
+    try:
+        _insert_item(stasher)
+        look = app.test_client().get("/api/price/abc").get_json()
+        assert look["ok"] and look["can_refresh"] is True
     finally:
         stasher.close()
 
