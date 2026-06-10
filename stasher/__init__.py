@@ -45,11 +45,19 @@ class Stasher:
         # (so the packaged app ships with a working item filter, not an empty editor).
         seed_user_rules(config.rules_path, config.data_dir)
         # Install/refresh the packaged graded archetype set (fresh install, or replace an
-        # outdated 0.1.x set — backing the old one up). Before the Evaluator so it loads it.
-        install_archetype_set(config.rules_path, config.data_dir, self.store)
+        # outdated set — backing the old one up). Before the Evaluator so it loads it.
+        set_change = install_archetype_set(config.rules_path, config.data_dir, self.store)
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
         self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None
+        # A set upgrade changes the rules hash, so the stored archive is now stale. Refresh it in
+        # place so new grades (e.g. jewels) show on open without a manual Re-evaluate. force=False
+        # only touches items whose evaluation predates the new set; a fresh install has none.
+        if set_change:
+            try:
+                self.evaluator.reevaluate_all()
+            except Exception:  # never let a refresh failure block startup
+                pass
 
     @classmethod
     def from_config(cls, path: str | None = None, **overrides) -> "Stasher":

@@ -3,16 +3,46 @@
 <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;
             padding:8px 10px; border:1px solid #2c5436; border-radius:6px; background:#16241a;">
   <strong>Scoring feedback</strong>
-  <span class="muted">{{ feedback_count }} note{{ '' if feedback_count == 1 else 's' }} stored locally</span>
+  <span class="muted"><span id="fb-count">{{ feedback_count }}</span> note(s) stored locally</span>
   <span style="flex:1"></span>
   <a href="{{ url_for('feedback_export') }}">Export .txt</a>
   <form method="post" action="{{ url_for('feedback_clear') }}" style="display:inline"
-        onsubmit="return confirm('Clear all {{ feedback_count }} stored feedback note(s)? This cannot be undone.');">
-    <button type="submit" {{ 'disabled' if feedback_count == 0 }}>Clear all</button>
+        onsubmit="return confirm('Clear all stored feedback note(s)? This cannot be undone.');">
+    <button type="submit" id="fb-clear" {{ 'disabled' if feedback_count == 0 }}>Clear all</button>
   </form>
 </div>
-<p class="muted" style="margin:0 0 14px">Add notes per item on the <a href="{{ url_for('queue') }}">queue</a>;
-  export them here as one file to share, then clear before the next round.</p>
+<p class="muted" style="margin:0 0 8px">Add notes per item on the <a href="{{ url_for('queue') }}">queue</a>;
+  edit or remove them below, export as one file to share, then clear before the next round.</p>
+
+{% if notes %}
+<div class="note-list" id="note-list">
+  {% for n in notes %}
+  <div class="qcard note-card" data-hash="{{ n.hash }}">
+    {% if n.card %}{% set c = n.card %}{% include "_item_card.html" %}
+    {% else %}
+    <div class="tooltip r-{{ n.rarity }}"><div class="t-head">
+      {% if n.name %}<div class="t-name">{{ n.name }}</div>{% endif %}
+      <div class="t-base">{{ n.type_line or '—' }}</div></div></div>
+    {% endif %}
+    <div class="qside">
+      <div class="note-head">
+        {% if n.tier %}<span class="score-badge tier-{{ n.tier }}">{{ n.tier }}
+          <span class="score-val">{{ '%.2f'|format(n.score) }}</span></span>{% endif %}
+        <span class="muted note-ts" data-ts="{{ n.created_at }}"></span>
+      </div>
+      <textarea class="fb-note" rows="3" spellcheck="false">{{ n.note }}</textarea>
+      <div class="fb-row">
+        <button type="button" class="note-save">Save</button>
+        <button type="button" class="note-remove">Remove</button>
+        <span class="fb-status muted"></span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted" id="note-empty" style="margin:0 0 16px">No notes yet.</p>
+{% endif %}
 
 <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
   <strong>Query log</strong>
@@ -31,6 +61,17 @@
   textarea.code { width:100%; height:72vh; font:12px/1.45 ui-monospace,Consolas,monospace;
     background:#0c0d11; color:#d7dbe0; border:1px solid #2a2f37; border-radius:6px;
     padding:8px 10px; white-space:pre; overflow:auto; resize:vertical; }
+  /* Saved-notes list — reuses the queue's full item card (.qcard + _item_card.html), its side
+     column (.qside), the note field (.fb-note), and the global score badge. */
+  .note-list { max-height:60vh; overflow:auto; border:1px solid #23272e; border-radius:6px;
+    background:#101216; padding:8px 8px 0; margin-bottom:16px; }
+  .note-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .note-head .note-ts { margin-left:auto; font-size:11px; }
+  .note-head .score-badge { margin-bottom:0; }
+  .fb-note { width:100%; resize:vertical; font:12px/1.4 system-ui,sans-serif; background:#1b1e24;
+    color:#d7dbe0; border:1px solid #3a414b; border-radius:5px; padding:4px 6px; }
+  .note-card .fb-row { display:flex; gap:6px; align-items:center; }
+  .note-card .fb-status { font-size:11px; }
 </style>
 <script>
   document.getElementById('copy-log').onclick = async () => {
@@ -44,5 +85,52 @@
     if (e.target.checked) timer = setInterval(() => location.reload(), 3000);
     else if (timer) clearInterval(timer);
   };
+
+  // --- Saved notes: edit / remove single notes in place (no reload) ---
+  function setNoteCount(n) {
+    const c = document.getElementById('fb-count'); if (c) c.textContent = n;
+    const clear = document.getElementById('fb-clear'); if (clear) clear.disabled = n === 0;
+    const list = document.getElementById('note-list');
+    if (n === 0 && list) {
+      const p = document.createElement('p');
+      p.className = 'muted'; p.id = 'note-empty'; p.style.margin = '0 0 16px';
+      p.textContent = 'No notes yet.';
+      list.replaceWith(p);
+    }
+  }
+  async function postEdit(hash, note) {
+    const r = await fetch('/api/feedback/edit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hash, note}),
+    });
+    return r.json();
+  }
+  document.querySelectorAll('.note-card').forEach(row => {
+    const hash = row.dataset.hash;
+    const ta = row.querySelector('.fb-note');
+    const status = row.querySelector('.fb-status');
+    const saveBtn = row.querySelector('.note-save');
+    const removeBtn = row.querySelector('.note-remove');
+    saveBtn.onclick = async () => {
+      saveBtn.disabled = true; status.textContent = 'saving…';
+      try {
+        const j = await postEdit(hash, ta.value);
+        status.textContent = j.stored ? 'saved ✓' : 'removed';
+        setNoteCount(j.count);
+        if (!j.stored) { row.remove(); return; }   // blank note deletes the row
+      } catch (e) { status.textContent = 'failed'; }
+      saveBtn.disabled = false;
+      setTimeout(() => { status.textContent = ''; }, 2000);
+    };
+    removeBtn.onclick = async () => {
+      if (!confirm('Remove this note?')) return;
+      removeBtn.disabled = true;
+      try {
+        const j = await postEdit(hash, '');
+        setNoteCount(j.count);
+        row.remove();
+      } catch (e) { removeBtn.disabled = false; status.textContent = 'failed'; }
+    };
+  });
 </script>
 {% endblock %}

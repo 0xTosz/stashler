@@ -468,6 +468,22 @@ class Store:
             self._conn.commit()
             return True
 
+    def edit_feedback(self, item_hash: str, note: str) -> bool:
+        """Edit or remove an existing note **in place** (the log-page list), keyed by hash. Unlike
+        :meth:`set_feedback` this touches only the ``feedback`` table — it doesn't re-snapshot from
+        ``items`` — so a note whose source item has since been cleared is still editable. A blank
+        note deletes the row. Returns True if a note remains, False if it was removed/absent."""
+        note = (note or "").strip()
+        with self._lock:
+            if not note:
+                self._conn.execute("DELETE FROM feedback WHERE item_hash = ?", (item_hash,))
+                self._conn.commit()
+                return False
+            cur = self._conn.execute(
+                "UPDATE feedback SET note = ? WHERE item_hash = ?", (note, item_hash))
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def feedback_notes(self) -> dict[str, str]:
         """{item_hash: note} for pre-filling the queue's per-item fields."""
         with self._lock:
