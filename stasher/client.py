@@ -217,6 +217,7 @@ def _build_query(
     name must include the #discriminator, e.g. "Name#1234".
     """
     filters: dict = {}
+    stats = None  # the stat-filter group is a top-level member of `query`, NOT of `query.filters`
     if not market:
         filters["trade_filters"] = {"filters": {"account": {"input": account}}}
     if extra_filters:
@@ -224,9 +225,13 @@ def _build_query(
             if group == "trade_filters":
                 tf = filters.setdefault("trade_filters", {"filters": {}})
                 tf["filters"].update(value.get("filters", {}))
+            elif group == "stats":
+                stats = value
             else:
                 filters[group] = value
     query: dict = {"status": {"option": status}, "filters": filters}
+    if stats is not None:
+        query["stats"] = stats
     if type_name:
         query["type"] = type_name
     if item_name:

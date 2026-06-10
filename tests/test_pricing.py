@@ -142,6 +142,19 @@ def test_build_query_account_mode_still_has_account():
     assert body["query"]["filters"]["trade_filters"]["filters"]["account"]["input"] == "Me#1"
 
 
+def test_stats_group_is_top_level_not_under_filters():
+    # trade2 rejects a `stats` key inside query.filters ("Unknown filter group: stats");
+    # it must sit at query.stats. A composed plan body must end up shaped that way.
+    plan = _plan()
+    extra = query.body(plan, plan.filters)   # carries both `equipment_filters` and `stats`
+    extra.pop("_type", None)
+    body = _build_query("", extra, status="securable", market=True)
+    assert "stats" in body["query"] and "stats" not in body["query"]["filters"]
+    assert body["query"]["stats"][0]["filters"][0]["id"] == "explicit.stat_life"
+    # equipment_filters stays inside query.filters (it IS a filter group).
+    assert "equipment_filters" in body["query"]["filters"]
+
+
 # --- Store price cache (exact + fuzzy) ---------------------------------
 
 def _store():
