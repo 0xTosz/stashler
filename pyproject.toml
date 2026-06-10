@@ -30,6 +30,7 @@ include = ["stasher*"]
 
 [tool.setuptools.package-data]
 "stasher.evaluate" = ["*.toml", "*.filter", "*.yaml"]
+"stasher.pricing" = ["data/*.json"]
 "stasher.ui" = ["templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]

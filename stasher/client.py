@@ -77,19 +77,37 @@ class TradeClient:
         extra_filters: dict | None = None,
         target: str = "account",
         sort: dict | None = None,
+        *,
+        market: bool = False,
+        status: str | None = None,
+        type_name: str | None = None,
+        item_name: str | None = None,
     ) -> dict:
-        """Run an account-scoped trade search. Returns {id, result, total}.
+        """Run a trade search. Returns {id, result, total}.
 
         ``sort`` overrides the default price sort, e.g. ``{"indexed": "desc"}`` for
         newest-first (used by the light poll to surface freshly-listed items).
+
+        **Market mode** (``market=True``) is for price checking: it **omits** the
+        seller-account filter (so it sees everyone's listings, not just yours) and defaults
+        ``status`` to ``"securable"`` (instant-buyout only). ``type_name``/``item_name`` set
+        the query's exact base ``type`` / unique ``name``. Goes through the same rate limiter
+        as every other call — never spin a second pricing path.
         """
         creds = self.creds()
-        if not creds.account:
+        if not market and not creds.account:
             raise TradeAPIError("No account_name configured")
         league = quote(creds.league, safe="")
         url = f"{self.config.base_url}/api/trade2/search/{self.config.realm}/{league}"
-        status = self.store.get_setting("status", self.config.status) or self.config.status
-        body = _build_query(creds.account, extra_filters, status, sort)
+        if status is None:
+            status = (
+                "securable" if market
+                else (self.store.get_setting("status", self.config.status) or self.config.status)
+            )
+        body = _build_query(
+            creds.account, extra_filters, status, sort,
+            market=market, type_name=type_name, item_name=item_name,
+        )
         data = self._request("search", "POST", url, target, json=body)
         return {
             "id": data.get("id"),
@@ -185,25 +203,32 @@ def _build_query(
     extra_filters: dict | None,
     status: str = "any",
     sort: dict | None = None,
+    *,
+    market: bool = False,
+    type_name: str | None = None,
+    item_name: str | None = None,
 ) -> dict:
-    """Assemble the trade search payload with the seller-account filter.
+    """Assemble the trade search payload.
 
-    ``status`` is the listing-type filter ("any" captures offline / non-buyout
-    listings, unlike the site default of "securable" = Instant Buyout). The account
+    By default it carries the seller-account filter (the archive captures *your* listings).
+    In **market mode** (``market=True``) the account filter is omitted so the search sees the
+    whole market — required for price checking. ``status`` is the listing-type filter ("any"
+    captures offline / non-buyout listings; "securable" = Instant Buyout only). The account
     name must include the #discriminator, e.g. "Name#1234".
     """
-    filters: dict = {
-        "trade_filters": {"filters": {"account": {"input": account}}},
-    }
+    filters: dict = {}
+    if not market:
+        filters["trade_filters"] = {"filters": {"account": {"input": account}}}
     if extra_filters:
         for group, value in extra_filters.items():
             if group == "trade_filters":
-                filters["trade_filters"]["filters"].update(
-                    value.get("filters", {})
-                )
+                tf = filters.setdefault("trade_filters", {"filters": {}})
+                tf["filters"].update(value.get("filters", {}))
             else:
                 filters[group] = value
-    return {
-        "query": {"status": {"option": status}, "filters": filters},
-        "sort": sort or {"price": "asc"},
-    }
+    query: dict = {"status": {"option": status}, "filters": filters}
+    if type_name:
+        query["type"] = type_name
+    if item_name:
+        query["name"] = item_name
+    return {"query": query, "sort": sort or {"price": "asc"}}

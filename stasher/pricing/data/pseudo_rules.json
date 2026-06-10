@@ -1,0 +1,32 @@
+{
+  "_comment": "Pseudo-mod aggregation: pseudo_id -> the real stat ids that sum into it. SEED ONLY. The pseudo *ids* come from /api/trade2/data/stats; the *composition* (which real stats feed each pseudo) is harvested/curated from Exiled-Exchange-2 in the Phase-0 task (PRICING_MODULE_PLAN.md §11). The stat_* ids below are PLACEHOLDERS marked _example and must be replaced with the real /data/stats ids before live use. Empty-slot pseudos take a min count, not a sum.",
+  "aggregates": [
+    {
+      "pseudo_id": "pseudo.pseudo_total_elemental_resistance",
+      "_example": true,
+      "components": [
+        "explicit.stat_fire_resistance",
+        "explicit.stat_cold_resistance",
+        "explicit.stat_lightning_resistance"
+      ],
+      "min_components": 2,
+      "note": "fire/cold/lightning are fungible (ele_res family); chaos res is NOT included"
+    },
+    {
+      "pseudo_id": "pseudo.pseudo_total_attributes",
+      "_example": true,
+      "components": [
+        "explicit.stat_strength",
+        "explicit.stat_dexterity",
+        "explicit.stat_intelligence"
+      ],
+      "min_components": 2
+    }
+  ],
+  "empty_slots": {
+    "prefix": "pseudo.pseudo_number_of_empty_prefix_mods",
+    "suffix": "pseudo.pseudo_number_of_empty_suffix_mods",
+    "_example": true,
+    "note": "Confirm exact ids from /data/stats. Used by the rare_potential strategy to price crafting headroom (require >= N empty prefix/suffix), never to fabricate the missing mods."
+  }
+}
