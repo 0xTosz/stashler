@@ -23,6 +23,33 @@
 
 ---
 
+## 0. Implementation status (2026-06-11)
+
+**Built & live-capable** on branch `feat/pricing-module` (`stasher/pricing/`): the universal
+core (`FilterPlan`→body→`PriceEstimate`), the budgeted relaxation ladder with the floor rung,
+modal-currency price math, TradeClient **market mode** (`securable`, no account filter), the
+`price_cache`/`price_item` store with exact + fuzzy lookup, the `PricingService` queue, the
+Flask routes, and the UI (detail-card price box, status indicator, Settings clear/TTL). ~30
+offline tests; full suite green.
+
+**Phase-0 harvest done** via `tools/harvest_ee2_pricing.py` (from Exiled-Exchange-2's bundled
+data on GitHub — no PoE API calls): real trade2 ids for the elemental/chaos resistance and
+all-attributes pseudos (multiplier-weighted) and the empty prefix/suffix pseudos. The
+`data_ready()` interlock now passes, so a user "Price check" issues real (rate-limited,
+instant-buyout) searches.
+
+**Correction to this doc:** PoE2 trade puts weapon DPS *and* defence totals in **one
+`equipment_filters` group** (`ar/es/ev/dps/pdps/edps/aps/crit/block/...`) — not the
+`weapon_filters`/`armour_filters` named below (which reflect PoE1). The code uses
+`equipment_filters`; treat the older names in §3.3/§4 as illustrative.
+
+**Still open (deferred, not API-blocked):** replace `plan.py`'s heuristics (filter *ranking*,
+the finished-vs-potential decision, "strong base") with the evaluator's real mod grading /
+free-slot / defence-gate signals — best calibrated against live prices. The relaxation floor
+already uses the real per-affix tier minimum from `extended`.
+
+---
+
 ## 1. Scope & goals
 
 **Goal:** given a captured item, estimate its current market value with reasonable
