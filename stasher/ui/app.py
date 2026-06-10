@@ -14,6 +14,7 @@ from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
 from ..evaluate.archetype_model import value_to_tier
 from ..evaluate.itemdata import clean_mod_text, stash_regex
 from ..pricing.appraise import data_ready as pricing_data_ready
+from ..pricing.tradelink import build_trade_url
 from .itemcard import build_card
 
 PAGE_SIZE = 50
@@ -268,12 +269,20 @@ def create_app(stasher) -> Flask:
         # detail comes from explain_score's structured breakdown (tabs).
         other_reasons = [r.get("explanation", "") for r in results
                          if r.get("checker") != "archetype_set"]
+        stash_tab = ((entry.get("listing") or {}).get("stash") or {}).get("name")
+        # "Open on trade site" link: base + all affixes at slightly-relaxed floors. No API call
+        # (uses the site's ?q= state param). League/realm/status from the live config + settings.
+        league = store.get_setting("league", stasher.config.league) or stasher.config.league
+        status = store.get_setting("status", stasher.config.status) or stasher.config.status
+        trade_url = build_trade_url(
+            item, league=league, base_url=stasher.config.base_url,
+            realm=stasher.config.realm, status=status)
         return render_template(
             "_detail_card.html", c=card, reasons=reasons,
             chips=_checker_chips(results, row["score"]),
             other_reasons=other_reasons,
             score_breakdown=stasher.evaluator.explain_score(item),
-            hash=item_hash,
+            hash=item_hash, stash_tab=stash_tab, trade_url=trade_url,
         )
 
     @app.route("/api/rules/<arch_id>/enabled", methods=["POST"])

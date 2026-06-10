@@ -22,7 +22,7 @@ def _insert_item(stasher, item_hash="abc"):
     item = {"frameType": 1, "baseType": "Iron Ring", "typeLine": "Iron Ring",
             "extended": {"mods": {"explicit": [
                 {"magnitudes": [{"hash": "explicit.stat_life", "min": "20", "max": "30"}]}]}}}
-    entry = {"id": item_hash, "listing": {}, "item": item}
+    entry = {"id": item_hash, "listing": {"stash": {"name": "Quad Tab 3"}}, "item": item}
     stasher.store.insert_item(ItemRecord(
         hash=item_hash, account="me", listed_at=None, price_amount=None, price_currency=None,
         price_type=None, item_name=None, type_line="Iron Ring", rarity="Magic",
@@ -73,6 +73,17 @@ def test_price_data_ready_after_harvest():
         _insert_item(stasher)
         look = app.test_client().get("/api/price/abc").get_json()
         assert look["ok"] and look["can_refresh"] is True
+    finally:
+        stasher.close()
+
+
+def test_detail_card_shows_stash_tab_and_trade_link():
+    stasher, app = _app()
+    try:
+        _insert_item(stasher)
+        body = app.test_client().get("/records/abc/card").get_data(as_text=True)
+        assert "Stash tab" in body and "Quad Tab 3" in body
+        assert "Open on trade site" in body and "/trade2/search/poe2/" in body
     finally:
         stasher.close()
 

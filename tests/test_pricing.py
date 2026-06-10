@@ -6,6 +6,7 @@ mode, the Store price cache (exact + fuzzy lookup), the ladder runner against a 
 PriceSource, and the headline-aggregate DPS math.
 """
 
+import json
 import tempfile
 
 import pytest
@@ -267,6 +268,37 @@ def test_weapon_dps_from_properties():
 def test_defence_totals_from_properties():
     item = {"properties": [{"name": "Energy Shield", "values": [["520", 0]]}]}
     assert aggregates.defence_totals(item) == {"energy_shield": 520.0}
+
+
+# --- trade-site verification link --------------------------------------
+
+def _decode_q(url):
+    import urllib.parse
+    return json.loads(urllib.parse.unquote(url.split("?q=", 1)[1]))
+
+
+def test_trade_url_rare_base_affixes_floor_no_name():
+    from stasher.pricing.tradelink import build_trade_url
+    item = {"frameType": 2, "baseType": "Vaal Regalia",
+            "extended": {"mods": {"explicit": [
+                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
+    url = build_trade_url(item, league="Runes of Aldur",
+                          base_url="https://www.pathofexile.com", realm="poe2", status="any")
+    assert url.startswith("https://www.pathofexile.com/trade2/search/poe2/Runes%20of%20Aldur?q=")
+    q = _decode_q(url)
+    assert q["query"]["type"] == "Vaal Regalia"
+    assert "name" not in q["query"]                 # a rare's generated name isn't searchable
+    f = q["query"]["stats"][0]["filters"][0]
+    assert f["id"] == "explicit.stat_life" and f["value"]["min"] == 90  # tier floor, not midpoint
+    assert "trade_filters" not in q["query"]["filters"]   # market-wide, no account
+
+
+def test_trade_url_unique_uses_name():
+    from stasher.pricing.tradelink import build_trade_url
+    item = {"frameType": 3, "name": "Headhunter", "baseType": "Leather Belt", "extended": {}}
+    q = _decode_q(build_trade_url(item, league="Standard",
+                                  base_url="https://www.pathofexile.com", realm="poe2"))
+    assert q["query"]["name"] == "Headhunter" and q["query"]["type"] == "Leather Belt"
 
 
 # --- pseudo aggregation on the real harvested ids ----------------------
