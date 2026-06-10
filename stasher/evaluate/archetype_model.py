@@ -22,6 +22,10 @@ GRADE_FACTOR = {"S": 1.0, "A": 0.95, "B": 0.90, "C": 0.85, "D": 0.80}
 UNKNOWN_BASE = 0.85  # base not graded (incl. under-sampled exotic bases) — lenient, not punishing
 MAX_AFFIXES = {"Magic": 2, "Rare": 6}  # explicit-affix ceiling, for open-slot (craft) reasoning
 MAX_PREFIX = MAX_SUFFIX = 3  # a rare holds ≤3 prefixes + ≤3 suffixes (the craft target)
+# Some classes cap lower in practice. A jewel's *usable* ceiling is ~4 mods — 5–6 needs much more
+# complex, risky crafting — so its open-slot headroom and craftable upgrade paths anchor to 4, not
+# the rare 6 (a 4-mod jewel reads as finished, not as having two free slots to craft into).
+CLASS_MAX_AFFIXES = {"Jewels": 4}
 TIER_CUTS = [("S", 0.75), ("A", 0.55), ("B", 0.40), ("C", 0.25), ("D", 0.0)]
 
 # How steeply tier maps to quality, and how much *craftable upside* to credit. Tunable per set
@@ -458,6 +462,12 @@ class Archetype:
                 total += 1
         return total
 
+    def _affix_ceiling(self) -> int:
+        """The finished-item affix count this archetype crafts toward — the rare 6, or a lower
+        per-class cap (e.g. jewels at 4, where 5–6 mods need risky crafting). Drives open-slot
+        headroom and the upgrade-path total budget."""
+        return CLASS_MAX_AFFIXES.get(self.item_class, MAX_AFFIXES["Rare"])
+
     def _slot_demand(self, mods, families, affix_slots) -> tuple[int, int, list[dict]]:
         """Open prefix/suffix counts on the item + the list of unsatisfied requirements with the
         slot ``kind`` each needs. Shared by ``_slot_reachable`` (a boolean gate) and
@@ -489,15 +499,19 @@ class Archetype:
         return (need_p <= open_p and need_s <= open_s
                 and need_either <= (open_p - need_p) + (open_s - need_s))
 
-    def _slot_reachable(self, mods, families, affix_slots) -> bool:
+    def _slot_reachable(self, mods, families, affix_slots, free: int | None = None) -> bool:
         """Whether the missing requirements can be **crafted into open slots of the right type** —
         a rare holds ≤3 prefixes + ≤3 suffixes, so a missing prefix needs an open *prefix* slot.
         Conservative: only known-type present mods count as used and only known-type missing
-        requirements count as needed, so an unclassified mod never forces a false discard. Empty
-        ``affix_slots`` (older sets) → always reachable."""
+        requirements count as needed, so an unclassified mod never forces a false discard. ``free``
+        (the item's total open-slot budget) caps the total craftable count — the binding constraint
+        when mods are unclassified (e.g. jewels), where the prefix/suffix pools alone don't bound it.
+        Empty ``affix_slots`` and no ``free`` (older sets) → always reachable."""
+        open_p, open_s, missing = self._slot_demand(mods, families, affix_slots or {})
+        if free is not None and len(missing) > free:
+            return False
         if not affix_slots:
             return True
-        open_p, open_s, missing = self._slot_demand(mods, families, affix_slots)
         return self._missing_fits(open_p, open_s, missing)
 
     def score(self, item: dict, families: dict[str, "ModFamily"] | None = None,
@@ -539,7 +553,7 @@ class Archetype:
                             "hybrid": r.hybrid, "tier_value": round(tv, 3)})
         full = sat == n
         is_magic = item.get("rarity") == "Magic"
-        craft_max = MAX_AFFIXES["Rare"]      # the finished rare you craft toward
+        craft_max = self._affix_ceiling()    # the finished item you craft toward (rare 6, jewel 4)
         free = max(0, craft_max - int(item.get("affix_count", item.get("mod_count", sat_units))))
         # Magic craft-base admission: two decent (≥T2) kept affixes, OR a single **T1** affix — one
         # perfect mod is a worthwhile base since augmenting the empty slot in-game is virtually free
@@ -555,7 +569,7 @@ class Archetype:
         coverage = sat / n
         # reachability gates the *upgrade* (completion) credit, not the match — a 5/6 with no open
         # slot for the missing affix is still a good item, it just can't be finished into the rule.
-        reachable = full or self._slot_reachable(mods, fams, affix_slots)
+        reachable = full or self._slot_reachable(mods, fams, affix_slots, free)
         # ``mod_score`` blends tier with coverage (unsatisfied reqs weigh in ``wsum`` but not
         # ``tvsum``) — the right signal for a *rare's* roll/craft blend. ``kept_quality`` is the
         # pure tier of the affixes actually present (coverage-independent) — the right signal for a
@@ -581,7 +595,8 @@ class Archetype:
             # bonus, but only on a base whose kept rolls are worth building on (``potential`` is
             # gated by ``mod_score``) — crafting onto trash tiers is not rewarded. ``headroom`` 0
             # (full) ⇒ ``blend = mod_score``; an empty base with good rolls lifts toward the ceiling.
-            headroom = min(1.0, max(0, free) / sc.craft_target) if sc.craft_target else 0.0
+            denom = CLASS_MAX_AFFIXES.get(self.item_class, sc.craft_target)
+            headroom = min(1.0, max(0, free) / denom) if denom else 0.0
             potential = mod_score * headroom
             blend = mod_score + (1.0 - mod_score) * sc.roll_influence * potential
             quality = self.value.score * blend * base_factor
@@ -618,8 +633,13 @@ class Archetype:
         if sat == 0 or sat == n:                       # nothing to anchor on / already full
             return None
         open_p, open_s, missing = self._slot_demand(mods, fams, affix_slots or {})
-        if not self._missing_fits(open_p, open_s, missing):
+        # Total open-slot budget caps the craft (the binding constraint for unclassified mods like
+        # jewels, where the prefix/suffix pools don't bound it): a finished 4-mod jewel offers none.
+        free = max(0, self._affix_ceiling()
+                   - int(item.get("affix_count", item.get("mod_count", sat))))
+        if len(missing) > free or not self._missing_fits(open_p, open_s, missing):
             return None
+        open_p, open_s = min(open_p, free), min(open_s, free)
         return {
             "archetype": self.id, "name": self.name, "units": n,
             "satisfied": sat, "required": n,

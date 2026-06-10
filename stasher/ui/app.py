@@ -488,8 +488,24 @@ def create_app(stasher) -> Flask:
             if r["detail"]:
                 tail += f"  | {r['detail']}"
             lines.append(head + tail)
+        # Saved notes (newest first) for the inline edit/remove list. Rebuild the full item card
+        # from the snapshot so the user sees the same properties/mods as on the queue.
+        notes = []
+        for r in reversed(store.feedback_records()):
+            try:
+                item = (json.loads(r["raw_json"]) if r["raw_json"] else {}).get("item") or {}
+                card = build_card(item)
+            except (ValueError, TypeError):
+                card = None
+            notes.append({
+                "hash": r["item_hash"], "note": r["note"],
+                "name": r["item_name"], "type_line": r["type_line"],
+                "rarity": r["rarity"] or "Normal", "score": r["score"],
+                "tier": value_to_tier(r["score"]) if r["score"] is not None else None,
+                "created_at": r["created_at"], "card": card,
+            })
         return render_template("log.html", text="\n".join(lines), count=len(rows),
-                               feedback_count=store.count_feedback())
+                               feedback_count=store.count_feedback(), notes=notes)
 
     # --- scoring feedback (TEMPORARY) -----------------------------------
     @app.route("/api/feedback", methods=["POST"])
@@ -499,6 +515,16 @@ def create_app(stasher) -> Flask:
         if not item_hash:
             return jsonify({"ok": False, "error": "missing hash"}), 400
         stored = store.set_feedback(item_hash, data.get("note") or "")
+        return jsonify({"ok": True, "stored": stored, "count": store.count_feedback()})
+
+    @app.route("/api/feedback/edit", methods=["POST"])
+    def api_feedback_edit():
+        """Edit/remove a saved note in place from the log-page list (keyed by hash; blank = remove)."""
+        data = request.get_json(silent=True) or {}
+        item_hash = (data.get("hash") or "").strip()
+        if not item_hash:
+            return jsonify({"ok": False, "error": "missing hash"}), 400
+        stored = store.edit_feedback(item_hash, data.get("note") or "")
         return jsonify({"ok": True, "stored": stored, "count": store.count_feedback()})
 
     @app.route("/feedback/export")

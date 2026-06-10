@@ -314,6 +314,79 @@ def test_set_archetype_enabled_persists_without_reeval(tmp_path):
     store.close()
 
 
+# --- Jewels: graded on the mod *combination* only (no tier ladder); Diamond inherits a colour ---
+JSPELL_KEY = mod_key("12% increased Spell Damage")
+JCRIT_KEY = mod_key("30% increased Critical Hit Chance for Spells")
+JCAST_KEY = mod_key("9% increased Cast Speed")
+JES_KEY = mod_key("14% increased maximum Energy Shield")
+
+_JEWEL_YAML = f"""
+meta: {{league: test}}
+mod_families: {{}}
+base_families: {{}}
+archetypes:
+  - id: jewel-spell-crit
+    name: Spell crit jewel
+    item_class: Jewels
+    rarity: [Rare]
+    requires:
+      - {{phrase: spell damage, mod: "{JSPELL_KEY}", mag: {{weight: 1}}}}
+      - {{phrase: spell crit, mod: "{JCRIT_KEY}", mag: {{weight: 1}}}}
+      - {{phrase: cast speed, mod: "{JCAST_KEY}", mag: {{weight: 1}}}}
+      - {{phrase: energy shield, mod: "{JES_KEY}", mag: {{weight: 1}}}}
+    bases: {{mode: graded, grades: {{Sapphire: A, Diamond: A}}}}
+    value: {{score: 0.88, tier: S}}
+"""
+
+
+def jewel_item(base="Sapphire", mods=None):
+    mods = mods or ["12% increased Spell Damage", "30% increased Critical Hit Chance for Spells",
+                    "9% increased Cast Speed", "14% increased maximum Energy Shield"]
+    # jewels carry no extended.baseClass in trade data; class comes from the icon. Set it here for
+    # a deterministic unit test (item_class prefers an explicit class when present).
+    return {"frameType": 2, "extended": {"baseClass": "Jewels"},
+            "baseType": base, "typeLine": base, "explicitMods": mods}
+
+
+def test_jewel_scored_on_combination_not_magnitude():
+    chk = ArchetypeSetChecker(ArchetypeSet.loads(_JEWEL_YAML))
+    b = chk.explain(jewel_item())
+    assert b["matches"], "a jewel with the full combination should match"
+    m = b["matches"][0]
+    assert m["name"] == "Spell crit jewel" and m["full"] is True
+    # band-less: every present mod scores tier_value 1.0 (presence, not how high it rolled)
+    assert all(r["tier_value"] == 1.0 for r in m["requires"])
+    # so a trash-roll of the same combination scores identically to a max roll
+    low = chk.explain(jewel_item(mods=["1% increased Spell Damage",
+                                       "1% increased Critical Hit Chance for Spells",
+                                       "1% increased Cast Speed",
+                                       "1% increased maximum Energy Shield"]))
+    assert low["score"] == b["score"]
+
+
+def test_jewel_affix_ceiling_is_four():
+    chk = ArchetypeSetChecker(ArchetypeSet.loads(_JEWEL_YAML))
+    # a full 4-mod jewel is finished — no open-slot headroom, no upgrade path (5–6 mods are out of
+    # scope; jewels cap at 4).
+    b = chk.explain(jewel_item())
+    m = b["matches"][0]
+    assert m["full"] is True and m["free_slots"] == 0 and b["targets"] == []
+    # a 3-mod jewel has exactly ONE craftable slot toward the 4-mod ideal (not three)
+    b3 = chk.explain(jewel_item(mods=["12% increased Spell Damage",
+                                      "30% increased Critical Hit Chance for Spells",
+                                      "9% increased Cast Speed"]))
+    m3 = next(mm for mm in b3["matches"] if mm["archetype"] == "jewel-spell-crit")
+    assert m3["free_slots"] == 1 and m3["reachable"] is True
+
+
+def test_jewel_diamond_base_inherits_colour_grade():
+    chk = ArchetypeSetChecker(ArchetypeSet.loads(_JEWEL_YAML))
+    import re
+    val = lambda r: float(re.search(r"\(([\d.]+)\)", r[0].explanation).group(1))
+    # Diamond rolls the colours' union, so the set grades it == Sapphire → identical headline score
+    assert val(chk.check(jewel_item(base="Sapphire"))) == val(chk.check(jewel_item(base="Diamond")))
+
+
 def test_store_score_roundtrip_and_sort(tmp_path):
     from stasher.evaluate.engine import Evaluation as Ev
     from stasher.store import ItemRecord, Store
