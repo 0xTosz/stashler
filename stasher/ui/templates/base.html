@@ -193,6 +193,13 @@
       background: #241f14; border: 1px solid #5a4a26; border-radius: 6px;
       padding: 8px 12px; margin: 0 0 14px; color: #e0c074; }
     .stale-banner button { border-color: #6e5a34; }
+
+    /* on-demand price check (detail card) */
+    .price-box { margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2f37; }
+    .price-box .price-btn { font-size: 12px; padding: 3px 9px; }
+    .price-out { margin-top: 6px; font-size: 13px; }
+    .price-out strong { color: #e0c074; }
+    .price-notes { margin-top: 2px; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -218,7 +225,8 @@
     </div>
     <div class="status">
       <div>
-        <div>Mode: <span id="s-mode" class="pill">…</span></div>
+        <div>Mode: <span id="s-mode" class="pill">…</span>
+          <span id="s-pricing" class="pill live" style="display:none"></span></div>
         <div class="muted"><span id="s-total">0</span> archived ·
           <span id="s-new">0</span> new this session</div>
         <div class="muted" id="s-error"></div>
@@ -309,8 +317,78 @@
           .forEach(row => { row.style.display = noslot.checked ? '' : 'none'; });
         noslot.onchange = apply; apply();
       }
+      const pbox = root.querySelector('.price-box');
+      if (pbox) wirePriceBox(pbox);
     }
     window.wireDetailCard = wireDetailCard;
+
+    // --- on-demand price check (the pricing module) -------------------------------------
+    // Cache-only on open; a "Price check" enqueues a background, rate-limited search and the
+    // box polls until the fresh estimate lands. Refused (with a reason) until the Phase-0
+    // stat data is harvested — see PRICING_MODULE_PLAN.md.
+    const fmtNum = n => (Math.round((+n) * 100) / 100).toString();
+    function renderEstimate(out, res) {
+      if (!res || res.status === 'miss' || !res.estimate) {
+        out.innerHTML = '<span class="muted">No price yet.</span>'; return;
+      }
+      const e = res.estimate;
+      if (e.is_floor && (e.n_samples || 0) === 0) {
+        out.innerHTML = '<span class="muted">Too thin to price — rarer than current listings.</span>';
+        return;
+      }
+      const conf = Math.round((e.confidence || 0) * 100);
+      const band = (e.low != null && e.high > 0)
+        ? ` <span class="muted">(${fmtNum(e.low)}–${fmtNum(e.high)})</span>` : '';
+      const floor = e.is_floor ? '≥ ' : '';
+      const age = res.age_hours != null
+        ? ` · ${res.age_hours < 1 ? '<1h' : Math.round(res.age_hours) + 'h'} ago` : '';
+      const tag = res.status === 'similar' ? ' <span class="muted">· similar item</span>'
+        : (res.status === 'stale' ? ' <span class="muted">· stale</span>' : '');
+      out.innerHTML = `<strong>${floor}${fmtNum(e.value)} ${e.currency}</strong>${band}`
+        + ` <span class="muted">· ${conf}% conf${age}</span>${tag}`
+        + (e.notes && e.notes.length ? `<div class="muted price-notes">${e.notes.join(' ')}</div>` : '');
+    }
+    async function priceLookup(hash) {
+      try { return await (await fetch('/api/price/' + encodeURIComponent(hash))).json(); }
+      catch (e) { return null; }
+    }
+    function wirePriceBox(box) {
+      const hash = box.dataset.hash, btn = box.querySelector('.price-btn'),
+            out = box.querySelector('.price-out');
+      let canRefresh = false, reason = '';
+      async function load() {
+        const res = await priceLookup(hash);
+        if (!res) { out.innerHTML = '<span class="muted">—</span>'; return; }
+        canRefresh = res.can_refresh; reason = res.refresh_reason;
+        renderEstimate(out, res);
+        btn.textContent = (res.estimate ? 'Refresh price' : 'Price check');
+        btn.disabled = false;
+      }
+      btn.onclick = async () => {
+        if (!canRefresh) { out.innerHTML = `<span class="muted">${reason || 'Pricing unavailable.'}</span>`; return; }
+        btn.disabled = true;
+        out.innerHTML = '<span class="muted">Queued… pricing in the background.</span>';
+        try { await fetch('/api/price/' + encodeURIComponent(hash), {method: 'POST'}); } catch (e) {}
+        let tries = 0;
+        const iv = setInterval(async () => {
+          tries++;
+          const res = await priceLookup(hash);
+          const pr = (res && res.pricing) || {};
+          const busy = (pr.queued || 0) > 0 || pr.in_progress;
+          if (res && res.status === 'fresh' && res.estimate) {
+            renderEstimate(out, res); btn.disabled = false; btn.textContent = 'Refresh price';
+            clearInterval(iv); return;
+          }
+          if (!busy || tries > 20) {
+            if (res) renderEstimate(out, res);
+            btn.disabled = false; clearInterval(iv); return;
+          }
+          out.innerHTML = `<span class="muted">Pricing… (${pr.queued || 0} queued)</span>`;
+        }, 2000);
+      };
+      load();
+    }
+    window.wirePriceBox = wirePriceBox;
 
     function bucket(b) {
       const pct = b.max_hits ? Math.min(100, 100 * b.used / b.max_hits) : 0;
@@ -372,6 +450,14 @@
 
       document.getElementById('rm-full').classList.toggle('active', s.rate_mode === 'full');
       document.getElementById('rm-restrictive').classList.toggle('active', s.rate_mode === 'restrictive');
+
+      const pr = s.pricing || {};
+      const pe = document.getElementById('s-pricing');
+      if (pe) {
+        const busy = (pr.queued || 0) + (pr.in_progress ? 1 : 0);
+        pe.textContent = busy ? ('pricing ' + busy + ' item' + (busy === 1 ? '' : 's') + '…') : '';
+        pe.style.display = busy ? '' : 'none';
+      }
 
       let html = '';
       for (const [policy, buckets] of Object.entries(s.rate_limits || {})) {

@@ -13,6 +13,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
 from ..evaluate.archetype_model import value_to_tier
 from ..evaluate.itemdata import clean_mod_text, stash_regex
+from ..pricing.appraise import data_ready as pricing_data_ready
 from .itemcard import build_card
 
 PAGE_SIZE = 50
@@ -370,6 +371,10 @@ def create_app(stasher) -> Flask:
             archetype_set_enabled=evaluator.archetype_set_is_enabled(),
             cutoff_magic=store._score_cutoffs()[0],
             cutoff_rare=store._score_cutoffs()[1],
+            price_cache_ttl=store.get_setting("price_cache_ttl_hours", "24") or "24",
+            price_cache_count=store.count_price_cache(),
+            pricing_ready=pricing_data_ready(store)[0],
+            pricing_reason=pricing_data_ready(store)[1],
             rules_error=None,
             rules_message=None,
         )
@@ -556,7 +561,59 @@ def create_app(stasher) -> Flask:
 
     @app.route("/api/status")
     def api_status():
-        return jsonify(worker.status())
+        base = worker.status()
+        base["pricing"] = stasher.pricing().status()
+        return jsonify(base)
+
+    # --- price checking -------------------------------------------------
+
+    def _price_item(item_hash):
+        """(item dict, error response) for a hash — None item means the tuple's 2nd is the
+        ready-to-return error tuple."""
+        row = store.get_record(item_hash)
+        if not row:
+            return None, (jsonify({"ok": False, "error": "unknown item"}), 404)
+        try:
+            item = (json.loads(row["raw_json"]) or {}).get("item") or {}
+        except (ValueError, TypeError):
+            return None, (jsonify({"ok": False, "error": "bad record"}), 500)
+        return item, None
+
+    @app.route("/api/price/<item_hash>")
+    def api_price_lookup(item_hash):
+        """Cache-only lookup (no network): the last/similar known estimate, plus whether a fresh
+        check is currently allowed (the Phase-0 data interlock)."""
+        item, err = _price_item(item_hash)
+        if err:
+            return err
+        svc = stasher.pricing()
+        res = svc.lookup(item)
+        ready, reason = pricing_data_ready(store)
+        res.update(ok=True, can_refresh=ready, refresh_reason=reason, pricing=svc.status())
+        return jsonify(res)
+
+    @app.route("/api/price/<item_hash>", methods=["POST"])
+    def api_price_request(item_hash):
+        """Enqueue a fresh price check (background, rate-limited). Refused while the Phase-0
+        stat data is unharvested."""
+        item, err = _price_item(item_hash)
+        if err:
+            return err
+        return jsonify(stasher.pricing().request(item_hash, item))
+
+    @app.route("/settings/price_cache/clear", methods=["POST"])
+    def settings_clear_price_cache():
+        n = store.clear_price_cache()
+        return redirect(url_for("settings", saved=f"Cleared {n} cached price(s)"))
+
+    @app.route("/settings/price_ttl", methods=["POST"])
+    def settings_price_ttl():
+        try:
+            v = max(0.0, float(request.form.get("price_cache_ttl_hours", "") or 24))
+        except (ValueError, TypeError):
+            v = 24.0
+        store.set_setting("price_cache_ttl_hours", str(v))
+        return redirect(request.form.get("next") or url_for("settings"))
 
     # Manual backfill routes removed from the UI: Auto-refresh now manages capture
     # (it decides light poll vs. full backfill itself). The Worker.start_backfill /

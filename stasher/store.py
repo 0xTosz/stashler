@@ -645,6 +645,10 @@ class Store:
             ).fetchone()
         return self._price_row(row) if row else None
 
+    def count_price_cache(self) -> int:
+        with self._lock:
+            return int(self._conn.execute("SELECT COUNT(*) AS n FROM price_cache").fetchone()["n"])
+
     def clear_price_cache(self) -> int:
         """Drop all cached prices (and the per-item pointers). Returns rows removed."""
         with self._lock:

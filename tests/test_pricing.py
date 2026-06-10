@@ -254,3 +254,58 @@ def test_weapon_dps_from_properties():
 def test_defence_totals_from_properties():
     item = {"properties": [{"name": "Energy Shield", "values": [["520", 0]]}]}
     assert aggregates.defence_totals(item) == {"energy_shield": 520.0}
+
+
+# --- appraisal service + data interlock --------------------------------
+
+def _magic_ring():
+    return {
+        "frameType": 1, "baseType": "Iron Ring", "typeLine": "Iron Ring",
+        "extended": {"mods": {"explicit": [
+            {"magnitudes": [{"hash": "explicit.stat_life", "min": "20", "max": "30"}]},
+        ]}},
+    }
+
+
+def test_data_ready_interlock():
+    from stasher.pricing.appraise import data_ready
+    store = _store()
+    ready, _ = data_ready(store)
+    assert not ready                      # seed tables carry _example placeholders
+    store.set_setting("pricing_force_ready", "1")
+    assert data_ready(store)[0]           # escape hatch for testing the wiring
+    store.close()
+
+
+def test_service_request_refused_until_ready():
+    from stasher.pricing.appraise import PricingService
+    store = _store()
+    svc = PricingService(store, FakeSource([50], [(5, "exalted")] * 10), lambda: "Std")
+    res = svc.request("h1", _magic_ring())
+    assert res["ok"] is False and "Phase 0" in res["reason"]
+    store.close()
+
+
+def test_service_prices_and_caches():
+    from stasher.pricing.appraise import PricingService
+    store = _store()
+    svc = PricingService(store, FakeSource([50], [(5, "exalted")] * 10), lambda: "Std")
+    item = _magic_ring()
+    assert svc.lookup(item)["status"] == "miss"
+    svc._price_one("h1", item)            # synchronous price (no thread)
+    res = svc.lookup(item)
+    assert res["status"] == "fresh" and res["estimate"]["value"] == 5
+    assert store.get_item_price("h1")["estimate"]["currency"] == "exalted"
+    store.close()
+
+
+def test_service_dedupes_in_flight():
+    from stasher.pricing.appraise import PricingService
+    store = _store()
+    store.set_setting("pricing_force_ready", "1")
+    svc = PricingService(store, FakeSource([50], [(5, "exalted")] * 10), lambda: "Std")
+    svc._in_progress = "h1"  # simulate an item already being priced
+    res = svc.request("h1", _magic_ring())
+    assert res.get("queued") and res.get("deduped")  # not re-enqueued; worker not started
+    assert svc._thread is None
+    store.close()
