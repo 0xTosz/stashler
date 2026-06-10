@@ -15,6 +15,18 @@
     </div>
     {% endif %}
     {% if not reasons %}<div class="muted">Not flagged by current rules.</div>{% endif %}
+    <div class="qmeta">
+      <div>Stash tab:
+        {% if stash_tab %}<span class="val">{{ stash_tab }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </div>
+      {% if trade_url %}<a class="trade-link" href="{{ trade_url }}" target="_blank" rel="noopener"
+        title="Open this item's base + every affix as a restrictive search on the official trade site, then ease filters there to find comparables">Open on trade site ↗</a>{% endif %}
+    </div>
+    <div class="price-box" data-hash="{{ hash }}">
+      <button type="button" class="price-btn">Price check</button>
+      <div class="price-out muted">…</div>
+    </div>
   </div>
 </div>
 

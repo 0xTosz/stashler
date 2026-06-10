@@ -13,6 +13,7 @@ datas = [
     ("stasher/evaluate/default_rules.toml", "stasher/evaluate"),
     ("stasher/evaluate/default.filter", "stasher/evaluate"),
     ("stasher/evaluate/default_archetype_set.yaml", "stasher/evaluate"),
+    ("stasher/pricing/data", "stasher/pricing/data"),
 ]
 
 a = Analysis(

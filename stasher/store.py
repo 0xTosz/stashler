@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
 QUERY_LOG_KEEP = 500  # rows retained in query_log for the UI feed
@@ -111,6 +111,30 @@ CREATE TABLE IF NOT EXISTS feedback (
     score      REAL,
     raw_json   TEXT,
     created_at TEXT NOT NULL
+);
+
+-- On-demand price-check cache. Keyed by a *deterministic* signature of the item's filter
+-- plan (its tier-floor buckets), not the search rung that won, so re-pricing is a clean hit
+-- and the value doesn't jump when the market thins. `filters` is the normalized filter set
+-- (JSON) used for fuzzy "similar result" matching; the cache is league-scoped. Long TTL,
+-- manually clearable from Settings.
+CREATE TABLE IF NOT EXISTS price_cache (
+    plan_sig   TEXT PRIMARY KEY,
+    strategy   TEXT NOT NULL,
+    rarity     TEXT,
+    base       TEXT,
+    league     TEXT NOT NULL,
+    filters    TEXT NOT NULL,
+    estimate   TEXT NOT NULL,
+    sampled_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_price_cache_scope ON price_cache(league, strategy, base);
+
+-- The last price estimate shown per captured item (so the UI renders it instantly).
+CREATE TABLE IF NOT EXISTS price_item (
+    item_hash TEXT PRIMARY KEY,
+    plan_sig  TEXT NOT NULL,
+    priced_at TEXT NOT NULL
 );
 """
 
@@ -507,6 +531,137 @@ class Store:
             cur = self._conn.execute("DELETE FROM feedback")
             self._conn.commit()
             return cur.rowcount
+
+    # --- price cache ----------------------------------------------------
+
+    def cache_price(
+        self,
+        plan_sig: str,
+        *,
+        strategy: str,
+        rarity: str | None,
+        base: str | None,
+        league: str,
+        filters: list[dict],
+        estimate: dict,
+    ) -> None:
+        """Upsert a price estimate keyed by the plan signature (see query.plan_sig)."""
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO price_cache
+                    (plan_sig, strategy, rarity, base, league, filters, estimate, sampled_at)
+                VALUES (?,?,?,?,?,?,?,?)
+                ON CONFLICT(plan_sig) DO UPDATE SET
+                    strategy=excluded.strategy, rarity=excluded.rarity, base=excluded.base,
+                    league=excluded.league, filters=excluded.filters,
+                    estimate=excluded.estimate, sampled_at=excluded.sampled_at
+                """,
+                (
+                    plan_sig, strategy, rarity, base, league,
+                    json.dumps(filters, separators=(",", ":")),
+                    json.dumps(estimate, separators=(",", ":")),
+                    utc_now_iso(),
+                ),
+            )
+            self._conn.commit()
+
+    @staticmethod
+    def _price_row(row: sqlite3.Row) -> dict:
+        d = dict(row)
+        d["estimate"] = json.loads(d["estimate"]) if d.get("estimate") else None
+        d["filters"] = json.loads(d["filters"]) if d.get("filters") else []
+        return d
+
+    def get_cached_price(self, plan_sig: str, league: str) -> dict | None:
+        """Exact cache hit by signature (scoped to league), or None."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM price_cache WHERE plan_sig = ? AND league = ?",
+                (plan_sig, league),
+            ).fetchone()
+        return self._price_row(row) if row else None
+
+    def find_similar_price(
+        self,
+        *,
+        strategy: str,
+        base: str | None,
+        league: str,
+        filters: list[dict],
+        max_mod_diff: int = 1,
+        floor_tol: float = 0.15,
+        max_age_hours: float | None = None,
+    ) -> dict | None:
+        """Nearest cached estimate for a *similar* plan: same strategy/base/league, filter
+        sets differing by at most ``max_mod_diff`` entries, and every shared filter's tier
+        floor within ``floor_tol`` (≈ same tier band). ``max_age_hours`` bounds staleness (a
+        match older than that is ignored — respects the cache TTL). Returns the closest (fewest
+        differing mods, then most recent), or None. Linear scan — the cache is small."""
+        q_keys = {(f["target"], f.get("id")): f.get("floor", 0) for f in filters}
+        sql = "SELECT * FROM price_cache WHERE league = ? AND strategy = ?"
+        params: list = [league, strategy]
+        if max_age_hours is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours))
+            sql += " AND sampled_at >= ?"
+            params.append(cutoff.isoformat(timespec="seconds"))
+        sql += " ORDER BY sampled_at DESC"
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        best: tuple[int, dict] | None = None
+        for row in rows:
+            if (row["base"] or None) != (base or None):
+                continue
+            cfilters = json.loads(row["filters"]) if row["filters"] else []
+            c_keys = {(f["target"], f.get("id")): f.get("floor", 0) for f in cfilters}
+            sym = set(q_keys) ^ set(c_keys)
+            if len(sym) > max_mod_diff:
+                continue
+            ok = True
+            for k in set(q_keys) & set(c_keys):
+                qf, cf = q_keys[k], c_keys[k]
+                hi = max(abs(qf), abs(cf), 1.0)
+                if abs(qf - cf) / hi > floor_tol:
+                    ok = False
+                    break
+            if not ok:
+                continue
+            if best is None or len(sym) < best[0]:
+                best = (len(sym), self._price_row(row))
+        return best[1] if best else None
+
+    def set_item_price(self, item_hash: str, plan_sig: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO price_item(item_hash, plan_sig, priced_at) VALUES (?,?,?) "
+                "ON CONFLICT(item_hash) DO UPDATE SET plan_sig=excluded.plan_sig, "
+                "priced_at=excluded.priced_at",
+                (item_hash, plan_sig, utc_now_iso()),
+            )
+            self._conn.commit()
+
+    def get_item_price(self, item_hash: str) -> dict | None:
+        """The last estimate shown for an item (joins price_item → price_cache), or None."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT c.*, p.priced_at FROM price_item p "
+                "JOIN price_cache c ON c.plan_sig = p.plan_sig WHERE p.item_hash = ?",
+                (item_hash,),
+            ).fetchone()
+        return self._price_row(row) if row else None
+
+    def count_price_cache(self) -> int:
+        with self._lock:
+            return int(self._conn.execute("SELECT COUNT(*) AS n FROM price_cache").fetchone()["n"])
+
+    def clear_price_cache(self) -> int:
+        """Drop all cached prices (and the per-item pointers). Returns rows removed."""
+        with self._lock:
+            n = int(self._conn.execute("SELECT COUNT(*) AS c FROM price_cache").fetchone()["c"])
+            self._conn.execute("DELETE FROM price_cache")
+            self._conn.execute("DELETE FROM price_item")
+            self._conn.commit()
+        return n
 
     # --- maintenance ----------------------------------------------------
 

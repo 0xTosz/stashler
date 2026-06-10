@@ -1,0 +1,17 @@
+{
+  "_comment": "Seed PoE2 currency rates -> base unit (exalted). Volatile; refresh per release and stamp sampled_at. Unknown currencies are dropped from pricing with lower confidence (see price.py). The pricing core prefers the cheapest-N modal currency and only converts outliers, so these rates mainly disambiguate cross-currency listings.",
+  "base": "exalted",
+  "sampled_at": "2026-06-10",
+  "rates": {
+    "exalted": 1.0,
+    "divine": 200.0,
+    "chaos": 10.0,
+    "annul": 30.0,
+    "regal": 1.5,
+    "vaal": 1.0,
+    "alch": 0.5,
+    "aug": 0.05,
+    "transmute": 0.02,
+    "mirror": 300000.0
+  }
+}

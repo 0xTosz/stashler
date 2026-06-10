@@ -50,6 +50,7 @@ class Stasher:
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
         self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None
+        self._pricing = None
         # A set upgrade changes the rules hash, so the stored archive is now stale. Refresh it in
         # place so new grades (e.g. jewels) show on open without a manual Re-evaluate. force=False
         # only touches items whose evaluation predates the new set; a fresh install has none.
@@ -115,11 +116,30 @@ class Stasher:
             )
         return self._worker
 
+    def pricing(self):
+        """On-demand price-appraisal service (lazy). Shares the one TradeClient/RateLimiter,
+        so price checks spend the same rate budget as capture — never a second path. Idle
+        until an item is enqueued via the UI; refuses live searches until the Phase-0 stat
+        data is harvested (see stasher.pricing.appraise.data_ready)."""
+        if self._pricing is None:
+            from .pricing.appraise import PricingService
+            from .pricing.pricer import TradeClientSource
+
+            self._pricing = PricingService(
+                self.store,
+                TradeClientSource(self.client),
+                league_getter=lambda: self.store.get_setting("league", self.config.league)
+                or self.config.league,
+            )
+        return self._pricing
+
     # --- lifecycle ------------------------------------------------------
 
     def close(self) -> None:
         if self._worker is not None:
             self._worker.stop()
+        if self._pricing is not None:
+            self._pricing.stop()
         self.client.close()
         self.store.close()
 
