@@ -106,15 +106,17 @@ def _aggregate_filters(item: dict, *, droppable: bool) -> list[StatFilter]:
 
 
 def _open_slot_filters(item: dict) -> list[StatFilter]:
-    """Require >= the item's open prefix/suffix count, so we compare against craftable bases."""
-    ids = pseudo.empty_slot_ids()
-    out: list[StatFilter] = []
-    # TODO(eval): derive real open prefix/suffix counts from affix slots; require >= 1 for now.
-    for slot in ("prefix", "suffix"):
-        if slot in ids:
-            out.append(StatFilter(TARGET_STATS, min=1, relax_floor=1, droppable=False,
-                                  id=ids[slot], group=GROUP_PSEUDO))
-    return out
+    """Require the comparable to also have crafting headroom: at least one **total** open affix
+    slot. Droppable, so the ladder can relax it rather than zero out.
+
+    Uses the total-open-affix pseudo (not a prefix AND suffix pair, which would force *both* open
+    even when the item has only one — over-restrictive). TODO(eval): require the item's actual
+    open count once prefix/suffix classification is wired in."""
+    aff = pseudo.empty_slot_ids().get("affix")
+    if not aff:
+        return []
+    return [StatFilter(TARGET_STATS, min=1, relax_floor=1, droppable=True,
+                      id=aff, group=GROUP_PSEUDO)]
 
 
 def build_for_item(

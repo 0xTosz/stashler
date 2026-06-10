@@ -25,7 +25,7 @@ from . import pricer as _pricer
 from . import pseudo as _pseudo
 from . import query as _query
 
-DEFAULT_TTL_HOURS = 24.0
+DEFAULT_TTL_HOURS = 14 * 24.0  # 14 days — the trade market moves slowly for generic mod combos
 
 
 def data_ready(store=None) -> tuple[bool, str]:
@@ -108,7 +108,7 @@ class PricingService:
                     "age_hours": age, "plan_sig": sig}
         similar = self.store.find_similar_price(
             strategy=plan.strategy, base=plan.base, league=league,
-            filters=_query.normalized_filters(plan))
+            filters=_query.normalized_filters(plan), max_age_hours=self.ttl_hours())
         if similar:
             return {"status": "similar", "estimate": similar["estimate"],
                     "age_hours": _age_hours(similar.get("sampled_at")), "plan_sig": sig}

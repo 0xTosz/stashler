@@ -135,6 +135,7 @@
       <input type="number" name="price_cache_ttl_hours" min="0" step="1"
              value="{{ price_cache_ttl }}" style="width:88px"></label>
     <button type="submit">Save TTL</button>
+    <span class="muted">336 = 14 days (the market moves slowly)</span>
   </form>
   <form method="post" action="{{ url_for('settings_clear_price_cache') }}"
         onsubmit="return confirm('Clear all {{ price_cache_count }} cached price(s)?');">

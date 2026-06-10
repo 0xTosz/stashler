@@ -88,7 +88,7 @@ def pseudos_for(item: dict) -> list[Pseudo]:
 
 
 def empty_slot_ids() -> dict[str, str]:
-    """``{"prefix": <pseudo id>, "suffix": <pseudo id>}`` for the open-slot filters used by the
-    rare_potential strategy (empty entries when not yet harvested)."""
+    """Open-slot pseudo ids: ``{"prefix", "suffix", "affix"}`` (``affix`` = total open slots),
+    each present only when harvested. Used by the rare_potential strategy to price headroom."""
     es = _rules().get("empty_slots") or {}
-    return {k: es[k] for k in ("prefix", "suffix") if es.get(k)}
+    return {k: es[k] for k in ("prefix", "suffix", "affix") if es.get(k)}

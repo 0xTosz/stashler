@@ -16,6 +16,7 @@ Also :func:`plan_sig` — a *deterministic* cache key derived from the item's in
 from __future__ import annotations
 
 import hashlib
+import json
 
 from . import (
     TARGET_STATS,
@@ -26,7 +27,6 @@ from . import (
 # Ladder rung labels (also surfaced in PriceEstimate.strategy).
 RUNG_FULL = "full"
 RUNG_RELAXED = "relaxed"
-RUNG_DROPPED = "dropped"
 RUNG_FLOOR = "floor"
 
 
@@ -65,42 +65,48 @@ def compose(plan: FilterPlan, filters: list[StatFilter]) -> dict:
     return extra
 
 
-def body(plan: FilterPlan, filters: list[StatFilter], *, drop_base: bool = False) -> dict:
-    """The full market-search payload fragment: ``compose`` output plus the exact base ``type``
-    when base-anchored (and not dropped). The exact base is carried as the reserved key
-    ``_type`` (the search adapter lifts it to the body's top-level ``query.type``); the account
-    filter and ``status`` are added by :meth:`TradeClient.search` in market mode, never here.
-    ``drop_base`` (the terminal floor rung) omits the base so only the category/rarity gate +
-    surviving filters remain."""
+def body(plan: FilterPlan, filters: list[StatFilter]) -> dict:
+    """The market-search payload fragment: ``compose`` output plus the exact base ``type`` (the
+    reserved ``_type`` key, which the search adapter lifts to the body's top-level
+    ``query.type``). The account filter and ``status`` are added by :meth:`TradeClient.search`
+    in market mode, never here."""
     out = compose(plan, filters)
-    if plan.base and not drop_base:
+    if plan.base:
         out["_type"] = plan.base
     return out
 
 
 def ladder(plan: FilterPlan) -> list[tuple[str, dict]]:
-    """The ordered (label, body-fragment) rungs to try, most-specific first.
+    """The ordered (label, body-fragment) rungs to try, most-specific first — at most **3**
+    distinct searches (identical rungs are collapsed):
 
     * ``full``    — every filter at its rolled min.
     * ``relaxed`` — every filter at its tier floor (``relax_floor``).
-    * ``dropped`` — non-droppable filters only, at their tier floor.
-    * ``floor``   — base anchor dropped too; the broadest comparable (a *floor* estimate).
+    * ``floor``   — only the non-droppable anchors (base + e.g. the defence/dps aggregate), at
+      their tier floor; the broadest comparable. Reaching it with too few matches yields a
+      *floor* estimate ("≥ X"). The base is kept throughout — it's the price driver for
+      base-anchored items, and base-agnostic plans simply carry no base.
     """
     full = list(plan.filters)
     relaxed = [sf.with_min(sf.relax_floor) for sf in plan.filters]
-    kept = [sf.with_min(sf.relax_floor) for sf in plan.filters if not sf.droppable]
+    floor = [sf.with_min(sf.relax_floor) for sf in plan.filters if not sf.droppable]
 
-    rungs: list[tuple[str, dict]] = [
+    candidates = [
         (RUNG_FULL, body(plan, full)),
         (RUNG_RELAXED, body(plan, relaxed)),
+        (RUNG_FLOOR, body(plan, floor)),
     ]
-    # Only add a distinct "dropped" rung if it actually removes something.
-    if kept and len(kept) != len(plan.filters):
-        rungs.append((RUNG_DROPPED, body(plan, kept)))
-    # Terminal floor: drop the base anchor; keep whatever non-droppable filters remain (or, if
-    # all were droppable, keep none — pure category/rarity breadth).
-    rungs.append((RUNG_FLOOR, body(plan, kept, drop_base=True)))
-    return rungs
+    # Collapse identical bodies (e.g. nothing to relax, or no droppable filters) so we never
+    # spend two searches on the same query.
+    out: list[tuple[str, dict]] = []
+    seen: set[str] = set()
+    for label, b in candidates:
+        key = json.dumps(b, sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((label, b))
+    return out
 
 
 def plan_sig(plan: FilterPlan, league: str | None = None) -> str:

@@ -24,6 +24,7 @@ from ..store import utc_now_iso
 
 DEFAULT_CHEAPEST_N = 10   # also the /fetch hard cap
 DEFAULT_ENOUGH = 8        # match count that counts as "enough to price"
+DEFAULT_MAX_SEARCHES = 3  # hard cap on trade searches per price check (the ladder is ≤3 rungs)
 
 
 def estimate(
@@ -33,12 +34,15 @@ def estimate(
     league: str | None = None,
     cheapest_n: int = DEFAULT_CHEAPEST_N,
     enough: int = DEFAULT_ENOUGH,
+    max_searches: int = DEFAULT_MAX_SEARCHES,
     rates: dict | None = None,
 ) -> PriceEstimate:
-    """Price one plan. Issues at most one search per rung (≤4 total incl. the floor) and one
-    fetch, all through ``source`` (the shared rate limiter lives behind it)."""
+    """Price one plan. Issues at most ``max_searches`` searches (one per ladder rung) and one
+    fetch, all through ``source`` (the shared rate limiter lives behind it). Stops at the first
+    rung with ``>= enough`` matches; if no rung clears it, the broadest rung's result becomes a
+    *floor* estimate ("≥ X")."""
     sig = _query.plan_sig(plan, league)
-    rungs = _query.ladder(plan)
+    rungs = _query.ladder(plan)[:max(1, max_searches)]
     notes = list(plan.notes)
 
     chosen_label = _query.RUNG_FLOOR
@@ -47,10 +51,11 @@ def estimate(
     for i, (label, frag) in enumerate(rungs):
         res = source.search(frag)
         chosen_label, chosen, relaxed_steps = label, res, i
-        if label != _query.RUNG_FLOOR and res.total >= enough:
+        if res.total >= enough:
             break  # this rung has enough comparables — use it
 
-    is_floor = chosen_label == _query.RUNG_FLOOR and (chosen is None or chosen.total < enough)
+    # We exit either on `enough` (a real price) or after the broadest rung fell short (a floor).
+    is_floor = chosen is None or chosen.total < enough
     if is_floor:
         notes.append("≥ this price — rarer/better than current listings.")
 

@@ -201,19 +201,23 @@ calls hard — ≤3 searches per item**:
 
 ```
 plan = ordered, group-targeted FilterPlan (most price-defining first)
-rung 1: all filters at rolled min                       -> search
-rung 2: each filter.min relaxed to its relax_floor      -> search   (tier floors)
-rung 3: drop the weakest filter.droppable mods          -> search
+rung 1 (full)    : all filters at rolled min                 -> search
+rung 2 (relaxed) : each filter.min relaxed to its relax_floor -> search   (tier floors)
+rung 3 (floor)   : keep only the non-droppable anchors (base + e.g. the defence/dps
+                   aggregate) at their floor; drop the droppable mods    -> search
 stop at the first rung with res.total >= ENOUGH (e.g. 8); estimate from its cheapest-N.
-TERMINAL: if rung 3 still < ENOUGH -> drop the base/anchor and take the broadest
-          comparable as a FLOOR: PriceEstimate(is_floor=True, "≥ X, rarer than listings").
+if no rung clears ENOUGH -> the broadest rung's result is a FLOOR:
+    PriceEstimate(is_floor=True, "≥ X, rarer than listings").
 ```
 
-- Each rung is one `search` against the shared limiter; never exceed 3 + the terminal.
+- **≤3 searches per item, capped** (`pricer.estimate(max_searches=3)`); identical rungs
+  are collapsed (`query.ladder` dedups bodies) so a base-agnostic plan that has nothing to
+  drop spends fewer. The **base is kept on every rung** — it's the price driver for
+  base-anchored items; base-agnostic plans (finished rares) just carry no base.
 - Pseudos (ele-res, defence totals, empty-slot) and weapon aggregates count as strong
   filters and relax last — they stay liquid where exact lines don't.
-- The terminal **floor** rung is the *most informative* case for chase items, not a
-  failure: thin/empty results mean "rarer/better than anything currently listed."
+- The **floor** rung is the *most informative* case for chase items, not a failure:
+  thin/empty results mean "rarer/better than anything currently listed."
 
 **Alternative cheap mode** (one search, fixed top-N) and **deep mode** (a 2nd combination
 probe for high-value items) are toggles layered on the same ladder; default is the ladder
@@ -369,7 +373,7 @@ capture — one IP budget, no second spender.
 Flow:
 1. "Price check" on an item card → `POST /api/price/<item_hash>` → fuzzy cache lookup
    (§6); on a similar hit, return it + offer fresh; otherwise enqueue, return `{queued}`.
-2. Worker: build `FilterPlan` (`plan.py`) → run the ladder (`query.py`, ≤3+terminal) →
+2. Worker: build `FilterPlan` (`plan.py`) → run the ladder (`query.py`, ≤3 searches) →
    cheapest-N fetch → `PriceEstimate` (`price.py`) → write cache + `price_item`. Each
    request logged to `query_log` (`kind="price"`) so it appears in the Log feed.
 3. **Status surfaced** by extending [Worker.status](stasher/runtime.py#L300) with
@@ -474,7 +478,8 @@ to one ele-res pseudo; a weapon emits a `weapon_filters.pdps` aggregate; unmappe
 confidence.
 
 **Phase 2 — query executor + ladder (offline).** `query.py`: `FilterPlan` → body, routing
-each `StatFilter` by `target`; the ≤3-rung ladder + terminal floor as a pure planner (emit
+each `StatFilter` by `target`; the ≤3-rung ladder (full → relaxed → non-droppable floor,
+identical rungs collapsed) as a pure planner (emit
 the *sequence* of bodies, don't call out). *Verify:* body has correct `type_filters`,
 group-routed filters (`stats`/`weapon_filters`/defence), `status="securable"`, **no** account
 filter; relaxation walks rolled-min → tier-floor → drop; empty result yields `is_floor`.

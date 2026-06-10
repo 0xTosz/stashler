@@ -99,21 +99,29 @@ def test_compose_routes_groups_and_omits_account():
     assert "trade_filters" not in body
 
 
-def test_ladder_relaxes_then_drops_then_floor():
+def test_ladder_relaxes_then_floors_keeping_base():
     plan = _plan()
     rungs = query.ladder(plan)
-    labels = [lbl for lbl, _ in rungs]
-    assert labels[0] == query.RUNG_FULL and labels[-1] == query.RUNG_FLOOR
-    full = dict(rungs[0][1])
-    relaxed = dict(rungs[1][1])
+    assert [lbl for lbl, _ in rungs] == [query.RUNG_FULL, query.RUNG_RELAXED, query.RUNG_FLOOR]
+    full, relaxed, floor = (b for _, b in rungs)
     assert full["stats"][0]["filters"][0]["value"]["min"] == 80
-    assert relaxed["stats"][0]["filters"][0]["value"]["min"] == 60  # relaxed to floor
-    # The dropped rung keeps the non-droppable aggregate, removes the droppable life stat.
-    dropped = next(b for lbl, b in rungs if lbl == query.RUNG_DROPPED)
-    assert "stats" not in dropped and dropped["equipment_filters"]["filters"]["es"]["min"] == 300
-    # The floor rung drops the exact base.
-    floor = next(b for lbl, b in rungs if lbl == query.RUNG_FLOOR)
-    assert "_type" not in floor
+    assert relaxed["stats"][0]["filters"][0]["value"]["min"] == 60  # relaxed to tier floor
+    # floor: the droppable life stat is gone, the non-droppable es aggregate stays at its floor,
+    # and the base (price driver) is RETAINED.
+    assert "stats" not in floor
+    assert floor["equipment_filters"]["filters"]["es"]["min"] == 300
+    assert floor["_type"] == "Vaal Regalia"
+
+
+def test_ladder_dedupes_identical_rungs():
+    # One non-droppable filter whose min == relax_floor: full == relaxed == floor -> a single
+    # search, never two identical ones.
+    plan = FilterPlan(
+        STRATEGY_RARE_FINISHED, type_filters={"filters": {"rarity": {"option": "rare"}}},
+        filters=[StatFilter("equipment_filters.es", min=300, relax_floor=300, droppable=False,
+                            group="aggregate")],
+        rarity="rare", base=None)
+    assert len(query.ladder(plan)) == 1
 
 
 def test_plan_sig_is_deterministic_and_floor_keyed():
@@ -202,6 +210,24 @@ def test_price_cache_fuzzy_within_tier_band_and_mod_diff():
     store.close()
 
 
+def test_find_similar_respects_max_age():
+    store = _store()
+    filters = [{"target": "stats", "id": "explicit.stat_life", "floor": 60}]
+    store.cache_price("sig1", strategy="rare_finished", rarity="rare", base=None,
+                      league="Std", filters=filters, estimate={"value": 5})
+    near = [{"target": "stats", "id": "explicit.stat_life", "floor": 62}]
+    # Fresh row within the window -> match.
+    assert store.find_similar_price(strategy="rare_finished", base=None, league="Std",
+                                    filters=near, max_age_hours=24) is not None
+    # Backdate it beyond the window -> ignored (respects TTL).
+    store._conn.execute("UPDATE price_cache SET sampled_at = ? WHERE plan_sig = 'sig1'",
+                        ("2000-01-01T00:00:00+00:00",))
+    store._conn.commit()
+    assert store.find_similar_price(strategy="rare_finished", base=None, league="Std",
+                                    filters=near, max_age_hours=24) is None
+    store.close()
+
+
 # --- ladder runner against a fake source -------------------------------
 
 class FakeSource:
@@ -247,6 +273,14 @@ def test_runner_floor_when_no_listings():
     src = FakeSource(totals=[0, 0, 0, 0], listings=[])
     est = pricer.estimate(plan, src, league="Std")
     assert est.is_floor and est.confidence == 0.0 and est.n_samples == 0
+
+
+def test_runner_respects_max_searches_cap():
+    plan = _plan()  # 3 distinct rungs
+    src = FakeSource(totals=[1, 1, 1], listings=[(9, "exalted")] * 3)
+    est = pricer.estimate(plan, src, league="Std", enough=8, max_searches=2)
+    assert src.searches == 2     # capped before the 3rd rung
+    assert est.is_floor          # never reached `enough`
 
 
 # --- headline aggregate DPS math ---------------------------------------

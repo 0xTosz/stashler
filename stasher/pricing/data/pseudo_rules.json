@@ -115,6 +115,7 @@
   ],
   "empty_slots": {
     "prefix": "pseudo.pseudo_number_of_empty_prefix_mods",
-    "suffix": "pseudo.pseudo_number_of_empty_suffix_mods"
+    "suffix": "pseudo.pseudo_number_of_empty_suffix_mods",
+    "affix": "pseudo.pseudo_number_of_empty_affix_mods"
   }
 }

@@ -271,12 +271,12 @@ def create_app(stasher) -> Flask:
                          if r.get("checker") != "archetype_set"]
         stash_tab = ((entry.get("listing") or {}).get("stash") or {}).get("name")
         # "Open on trade site" link: base + all affixes at slightly-relaxed floors. No API call
-        # (uses the site's ?q= state param). League/realm/status from the live config + settings.
+        # (uses the site's ?q= state param). Deliberately broad status (build_trade_url's "any"
+        # default) so the user sees the whole market to verify against — not the app's capture
+        # status (which may be the instant-buyout-only "securable").
         league = store.get_setting("league", stasher.config.league) or stasher.config.league
-        status = store.get_setting("status", stasher.config.status) or stasher.config.status
         trade_url = build_trade_url(
-            item, league=league, base_url=stasher.config.base_url,
-            realm=stasher.config.realm, status=status)
+            item, league=league, base_url=stasher.config.base_url, realm=stasher.config.realm)
         return render_template(
             "_detail_card.html", c=card, reasons=reasons,
             chips=_checker_chips(results, row["score"]),
@@ -380,7 +380,7 @@ def create_app(stasher) -> Flask:
             archetype_set_enabled=evaluator.archetype_set_is_enabled(),
             cutoff_magic=store._score_cutoffs()[0],
             cutoff_rare=store._score_cutoffs()[1],
-            price_cache_ttl=store.get_setting("price_cache_ttl_hours", "24") or "24",
+            price_cache_ttl=store.get_setting("price_cache_ttl_hours", "336") or "336",
             price_cache_count=store.count_price_cache(),
             pricing_ready=pricing_data_ready(store)[0],
             pricing_reason=pricing_data_ready(store)[1],

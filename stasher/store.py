@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
 QUERY_LOG_KEEP = 500  # rows retained in query_log for the UI feed
@@ -591,18 +591,23 @@ class Store:
         filters: list[dict],
         max_mod_diff: int = 1,
         floor_tol: float = 0.15,
+        max_age_hours: float | None = None,
     ) -> dict | None:
         """Nearest cached estimate for a *similar* plan: same strategy/base/league, filter
         sets differing by at most ``max_mod_diff`` entries, and every shared filter's tier
-        floor within ``floor_tol`` (≈ same tier band). Returns the closest (fewest differing
-        mods, then most recent), or None. Linear scan — the cache is small and per-user."""
+        floor within ``floor_tol`` (≈ same tier band). ``max_age_hours`` bounds staleness (a
+        match older than that is ignored — respects the cache TTL). Returns the closest (fewest
+        differing mods, then most recent), or None. Linear scan — the cache is small."""
         q_keys = {(f["target"], f.get("id")): f.get("floor", 0) for f in filters}
+        sql = "SELECT * FROM price_cache WHERE league = ? AND strategy = ?"
+        params: list = [league, strategy]
+        if max_age_hours is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours))
+            sql += " AND sampled_at >= ?"
+            params.append(cutoff.isoformat(timespec="seconds"))
+        sql += " ORDER BY sampled_at DESC"
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM price_cache WHERE league = ? AND strategy = ? "
-                "ORDER BY sampled_at DESC",
-                (league, strategy),
-            ).fetchall()
+            rows = self._conn.execute(sql, params).fetchall()
         best: tuple[int, dict] | None = None
         for row in rows:
             if (row["base"] or None) != (base or None):
