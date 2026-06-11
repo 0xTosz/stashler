@@ -438,13 +438,17 @@ def test_auto_price_thresholds_and_toggle(tmp_path):
     store.set_setting("auto_price_min_now", "0.4")
     assert svc.maybe_auto_request("h4", item, ev) is True                 # now basis crosses
 
-    # any price data at all (even stale/similar) skips — one rule for every eval path
-    for status in ("fresh", "stale", "similar"):
-        svc.lookup = lambda i, s=status: {"status": s, "estimate": {}}
-        assert svc.maybe_auto_request("h5", item, ev) is False
-    svc.lookup = lambda i: {"status": "miss"}
-    assert svc.maybe_auto_request("h6", item, ev) is True
-    assert calls == ["h", "h4", "h6"]
+    # ONLY an exact fresh hit skips (and adopts the estimate as the item's price);
+    # stale/similar cache data never satisfies an auto check — it runs the real search.
+    adopted = []
+    store.set_item_price = lambda h, sig: adopted.append((h, sig))
+    svc.lookup = lambda i: {"status": "fresh", "estimate": {}, "plan_sig": "sigX"}
+    assert svc.maybe_auto_request("h5", item, ev) is False
+    assert adopted == [("h5", "sigX")]
+    for status in ("stale", "similar", "miss"):
+        svc.lookup = lambda i, s=status: {"status": s, "estimate": {}, "plan_sig": "sigY"}
+        assert svc.maybe_auto_request(f"h6-{status}", item, ev) is True
+    assert calls == ["h", "h4", "h6-stale", "h6-similar", "h6-miss"]
     store.close()
 
 

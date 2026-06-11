@@ -151,12 +151,15 @@ class PricingService:
     # --- automatic price checks (threshold-driven, off by default) -------
 
     def maybe_auto_request(self, item_hash: str, item: dict, evaluation) -> bool:
-        """Enqueue a price check for an evaluated item when auto-pricing is on, its
+        """Enqueue a price check for an evaluated item when auto-pricing is on and its
         current (as-is) or crafting score crosses the configured threshold (a 0 threshold
-        disables that basis), and the item has **no price data yet** — anything cached
-        for its plan (fresh, stale, or fuzzy-similar) counts as data, so automation only
-        ever spends budget on genuine gaps. One rule for every evaluation path: capture,
-        bulk re-evaluation, set-upgrade refresh. Returns True when a check was queued."""
+        disables that basis). The check is EXACTLY a manual one — the same relaxation
+        ladder against the live market, cached the same way (plan-sig cache + the
+        per-item pointer). The only skip is an **exact, fresh** cached estimate for this
+        item's own plan (re-running eval passes must not re-spend inside the TTL);
+        stale or fuzzy-similar cache data never satisfies an auto check — that produced
+        way-off displayed prices. One rule for every evaluation path. Returns True when
+        a check was queued."""
         cfg = auto_price_config(self.store)
         if not cfg["enabled"]:
             return False
@@ -167,8 +170,14 @@ class PricingService:
         if not hit:
             return False
         try:
-            if self.lookup(item).get("status") != "miss":
-                return False    # has price data (even stale/similar) — never re-spend
+            res = self.lookup(item)
+            if res.get("status") == "fresh":
+                # This exact plan was priced within the TTL: an identical search would
+                # return the identical estimate, so adopt it as this item's price
+                # (display + "highest price" sort) instead of re-spending budget.
+                if res.get("plan_sig"):
+                    self.store.set_item_price(item_hash, res["plan_sig"])
+                return False
         except Exception:  # noqa: BLE001 — a lookup hiccup shouldn't block the check
             pass
         return bool(self.request(item_hash, item).get("queued"))
