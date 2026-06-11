@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stasher"
-version = "0.2.0b4"
+version = "0.2.0b5"
 description = "Append-only archive of your own Path of Exile 2 trade listings, captured carefully within the API rate limits."
 readme = "README.md"
 requires-python = ">=3.11"
