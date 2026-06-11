@@ -12,14 +12,12 @@
   {%- if price and not (price.is_floor and (price.n_samples or 0) == 0) %}
   <span class="pl-v">{{ '≥ ' if price.is_floor }}{{ '%g'|format(price.value) }} {{ price.currency }}
     {%- if not price.is_floor %} · {{ (price.confidence * 100)|round|int }}%{% endif %}</span>
-  <button type="button" class="pl-btn" title="Re-check price">↻</button>
   {%- elif price and price.is_floor %}
   <span class="pl-v muted">too thin to price</span>
-  <button type="button" class="pl-btn" title="Re-check price">↻</button>
   {%- else %}
   <span class="pl-v muted">not checked</span>
-  <button type="button" class="pl-btn">Check</button>
   {%- endif %}
+  <button type="button" class="pl-btn" title="Check / refresh price" aria-label="Check / refresh price">↻</button>
 </div>
 {% endmacro %}
 

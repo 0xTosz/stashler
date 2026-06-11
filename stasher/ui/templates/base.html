@@ -350,13 +350,13 @@
         const floor = e.is_floor ? '≥ ' : '';
         const conf = e.is_floor ? '' : ' · ' + Math.round((e.confidence || 0) * 100) + '%';
         v.textContent = floor + fmtNum(e.value) + ' ' + e.currency + conf;
-        v.className = 'pl-v'; btn.textContent = '↻'; btn.title = 'Re-check price';
+        v.className = 'pl-v';
       } else if (e && e.is_floor) {
-        v.textContent = 'too thin to price'; v.className = 'pl-v muted'; btn.textContent = '↻';
+        v.textContent = 'too thin to price'; v.className = 'pl-v muted';
       } else {
-        v.textContent = 'not checked'; v.className = 'pl-v muted'; btn.textContent = 'Check';
+        v.textContent = 'not checked'; v.className = 'pl-v muted';
       }
-      btn.disabled = false;
+      btn.textContent = '↻'; btn.disabled = false;   // always the refresh icon
     }
     async function refreshPriceLine(line) {
       try {

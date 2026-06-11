@@ -134,6 +134,7 @@
   .qfilter .chk { display:inline-flex; align-items:center; gap:4px; font-size:13px; }
   /* TEMP: per-item scoring feedback */
   .qfeedback { margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+  .qfeedback[hidden] { display:none; }   /* explicit `display` beats the [hidden] UA rule */
   .qfeedback textarea.fb-note { width:100%; resize:vertical; font:12px/1.4 system-ui,sans-serif;
     background:#1b1e24; color:#d7dbe0; border:1px solid #3a414b; border-radius:5px; padding:4px 6px; }
   .qfeedback .fb-row { display:flex; gap:6px; align-items:center; }
