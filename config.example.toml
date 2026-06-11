@@ -27,8 +27,9 @@ base_url = "https://www.pathofexile.com"
 # Where the SQLite archive lives.
 db_path = "stasher.db"
 
-# Descriptive User-Agent. GGG asks for app/version + a contact. Put your email.
-contact = "you@example.com"
+# Contact for the User-Agent. GGG asks for app/version + a reachable contact; defaults
+# to the Stashler dev address — override if you fork/self-host.
+contact = "stashlerdev@gmail.com"
 
 # Safety margin: leave this many requests of headroom under every rate-limit bucket.
 rate_limit_margin = 1

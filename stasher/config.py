@@ -72,8 +72,10 @@ class Config:
     # rules.toml > packaged default); see stasher.evaluate.rules.resolve_rules_path.
     rules_path: str | None = None
 
-    # Etiquette + tuning.
-    contact: str = "you@example.com"
+    # Etiquette + tuning. GGG asks third-party tools to identify themselves with an
+    # app/version User-Agent plus a reachable contact, so they can reach out before
+    # resorting to bans. Overridable via config/STASHER_CONTACT.
+    contact: str = "stashlerdev@gmail.com"
     rate_limit_margin: int = 1
     request_timeout: float = 30.0
 
@@ -124,7 +126,8 @@ class Config:
 
     @property
     def user_agent(self) -> str:
-        return f"stasher/{__version__} (+https://github.com/; contact: {self.contact})"
+        return (f"Stashler/{__version__} "
+                f"(+https://github.com/0xTosz/stashler; contact: {self.contact})")
 
     # --- loading ---------------------------------------------------------
 
