@@ -33,36 +33,50 @@ def _stat_filters(item: dict) -> list[dict]:
     return out
 
 
-def _empty_rune_sockets(item: dict) -> int:
-    """Number of **empty** rune sockets = rune-type sockets minus the runes socketed into them
-    (``sockets`` is the capacity, ``socketedItems`` the runes actually in them). Mirrors EE2's
-    ``augmentSockets.empty`` — empty sockets are craftable headroom a buyer values."""
-    sockets = item.get("sockets") or []
-    rune_sockets = sum(1 for s in sockets if isinstance(s, dict) and s.get("type") == "rune")
-    return max(0, rune_sockets - len(item.get("socketedItems") or []))
+# Max affixes per prefix/suffix group, by rarity (rare = 3 prefix + 3 suffix, magic = 1 + 1).
+_MAX_AFFIX = {"rare": 3, "magic": 1}
+
+
+def _empty_affix_slots(item: dict, rarity: str) -> tuple[int, int]:
+    """``(empty_prefix, empty_suffix)`` = the rarity cap minus the item's prefix/suffix counts.
+
+    Each ``extended.mods.explicit`` entry's ``tier`` encodes the kind in trade2 data — ``P*`` is
+    a prefix, ``S*`` a suffix (e.g. ``P5`` / ``S1``). Empty slots are craftable headroom a buyer
+    values, so a 3-prefix / 1-suffix rare has 2 empty suffix slots."""
+    cap = _MAX_AFFIX.get(rarity, 0)
+    if not cap:
+        return 0, 0
+    emods = ((item.get("extended") or {}).get("mods") or {}).get("explicit") or []
+    prefixes = sum(1 for m in emods if str(m.get("tier", "")).startswith("P"))
+    suffixes = sum(1 for m in emods if str(m.get("tier", "")).startswith("S"))
+    return max(0, cap - prefixes), max(0, cap - suffixes)
 
 
 def build_trade_url(item: dict, *, league: str, base_url: str, realm: str,
                     status: str = "any") -> str | None:
     """A ``pathofexile.com/trade2`` search URL prefilled with this item's base + affixes (+ any
-    empty rune sockets), or None if there's nothing to anchor on. Account-free (market-wide)."""
+    empty prefix/suffix slots), or None if there's nothing to anchor on. Account-free."""
     rarity = (itemdata.rarity(item) or "").lower()
     base = itemdata.base_type(item) or None
     stat_filters = _stat_filters(item)
+
+    # Empty affix slots are craftable headroom — require the comparable to have at least as many
+    # open prefix/suffix slots (pseudo stats). E.g. a 3-prefix/1-suffix rare adds "empty suffix
+    # >= 2". The user can ease these on the site.
+    ids = pseudo.empty_slot_ids()
+    empty_prefix, empty_suffix = _empty_affix_slots(item, rarity)
+    if empty_prefix and ids.get("prefix"):
+        stat_filters.append({"id": ids["prefix"], "value": {"min": empty_prefix}, "disabled": False})
+    if empty_suffix and ids.get("suffix"):
+        stat_filters.append({"id": ids["suffix"], "value": {"min": empty_suffix}, "disabled": False})
+
     if not base and not stat_filters:
         return None
-
     extra: dict = {}
     if rarity in ("normal", "magic", "rare", "unique"):
         extra["type_filters"] = {"filters": {"rarity": {"option": rarity}}}
     if stat_filters:
         extra["stats"] = [{"type": "and", "filters": stat_filters}]
-    # Empty rune sockets are craftable headroom (EE2 "auto-fill empty rune sockets") — require
-    # the comparable to have at least as many. Trade2's `rune_sockets` is total sockets, the
-    # closest available filter; the user can ease it on the site.
-    empty_sockets = _empty_rune_sockets(item)
-    if empty_sockets:
-        extra["equipment_filters"] = {"filters": {"rune_sockets": {"min": empty_sockets}}}
     # A rare's generated name isn't a searchable filter; only anchor a unique by name.
     name = itemdata.name(item) if rarity == "unique" else None
 

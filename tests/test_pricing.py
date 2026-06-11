@@ -335,25 +335,22 @@ def test_trade_url_unique_uses_name():
     assert q["query"]["name"] == "Headhunter" and q["query"]["type"] == "Leather Belt"
 
 
-def test_trade_url_includes_empty_rune_sockets():
+def test_trade_url_includes_empty_affix_slots():
+    from stasher.pricing import pseudo
     from stasher.pricing.tradelink import build_trade_url
-    # 2 rune sockets, 1 socketed rune -> 1 empty rune socket.
+    ids = pseudo.empty_slot_ids()
+    # Rare with 3 prefixes (P*) + 1 suffix (S*) -> 0 empty prefix, 2 empty suffix.
+    def aff(tier, h):
+        return {"tier": tier, "magnitudes": [{"hash": h, "min": "10", "max": "20"}]}
     item = {"frameType": 2, "baseType": "Vaal Regalia",
-            "sockets": [{"group": 0, "type": "rune"}, {"group": 0, "type": "rune"}],
-            "socketedItems": [{"name": "Fire Rune"}],
             "extended": {"mods": {"explicit": [
-                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
-    q = _decode_q(build_trade_url(item, league="Standard",
-                                  base_url="https://www.pathofexile.com", realm="poe2"))
-    assert q["query"]["filters"]["equipment_filters"]["filters"]["rune_sockets"]["min"] == 1
-    # A fully-runed item (0 empty) carries no socket filter.
-    full = {"frameType": 2, "baseType": "Vaal Regalia",
-            "sockets": [{"group": 0, "type": "rune"}], "socketedItems": [{"name": "Fire Rune"}],
-            "extended": {"mods": {"explicit": [
-                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
-    q2 = _decode_q(build_trade_url(full, league="Standard",
-                                   base_url="https://www.pathofexile.com", realm="poe2"))
-    assert "equipment_filters" not in q2["query"]["filters"]
+                aff("P1", "explicit.stat_a"), aff("P2", "explicit.stat_b"),
+                aff("P3", "explicit.stat_c"), aff("S1", "explicit.stat_d")]}}}
+    stats = {f["id"]: f["value"]["min"]
+             for f in _decode_q(build_trade_url(item, league="Standard",
+                 base_url="https://www.pathofexile.com", realm="poe2"))["query"]["stats"][0]["filters"]}
+    assert stats[ids["suffix"]] == 2          # 3 - 1 suffix = 2 empty suffix slots
+    assert ids["prefix"] not in stats         # 3 prefixes filled -> no empty-prefix filter
 
 
 # --- pseudo aggregation on the real harvested ids ----------------------
