@@ -43,12 +43,11 @@ DEFAULT_CRAFT_TARGET = 6              # affix slots a finished rare crafts towar
 # rule scores closer to full; a non-reachable partial keeps just its realized coverage.
 DEFAULT_PARTIAL_THRESHOLD = 0.6   # min coverage to flag a partial (3/4, 4/5, 4/6); below → no flag
 DEFAULT_CRAFT_CREDIT = 0.4        # value of a reachable-but-missing affix vs actually having it
-DEFAULT_MAGIC_COMPLETION = 0.95   # a magic craft base's completion (open slots = upside); <1 so a
-                                  # finished rare still edges an equivalent 2-affix base
-DEFAULT_MAGIC_SOLO = 0.55         # lock-in factor for a magic with a single T1 affix (vs a 2-affix
-                                  # base): the empty slot is cheap to augment but the 2nd good roll
-                                  # still isn't guaranteed, so a solo premium base lands a "potential"
-                                  # tier (B/C) below a finished item or a genuine two-high-tier base
+DEFAULT_MAGIC_COMPLETION = 0.85   # a magic craft base's completion ceiling (scaled by craftability
+                                  # G); corpus-fit 2026-06-12 (RESEARCH_LOG §7), was 0.95
+DEFAULT_MAGIC_SOLO = 0.35         # lock-in factor for a magic with a single T1 affix (vs a 2-affix
+                                  # base; corpus-fit 2026-06-12, was 0.55): the 2nd good roll
+                                  # still isn't guaranteed — a solo base lands well below finished
 DEFAULT_BREADTH_CAP = 0.3         # max boost a base gets from matching many *distinct* rules
 HYBRID_PREMIUM = 1.15             # weight multiplier for a hybrid (one-slot, two-stat) requirement
 
@@ -514,9 +513,43 @@ class Archetype:
             return True
         return self._missing_fits(open_p, open_s, missing)
 
+    def _craftability(self, mods: dict, families: dict, sc: "Scoring",
+                      cat: "dict[str, ModInfo] | None") -> float:
+        """``G ∈ (0,1]`` — how plausibly this rule's *missing* requirements can actually be
+        hit, from the mod catalog's spawn **presence frequencies** (the same roll-independent
+        signal as the rarity floor). Per missing slot ``g = min(1, freq / rarity_ref)``: a
+        common mod (life, res) ≈ 1, spirit ≈ 0.3, +proj-levels ≈ 0.09; no catalog data → 1
+        (graceful: old sets keep flat-credit behavior). ``G`` is the **geometric mean** over
+        missing slots (scale-stable across 1-missing vs 3-missing partials); nothing missing
+        → 1. Validated need: the flat craft credit paid the same for "needs life+res" and
+        "needs two chase mods" — the market does not (RESEARCH_LOG §7)."""
+        if not cat or sc.rarity_ref <= 0:
+            return 1.0
+
+        def g_for(freq: float | None) -> float:
+            if not freq or freq <= 0:
+                return 1.0                      # no data — lenient, never punishing
+            return min(1.0, freq / sc.rarity_ref)
+
+        logs: list[float] = []
+        for r in self.requires:
+            if r.family:
+                members = families[r.family].members if r.family in families else []
+                gap = max(0, r.min_count - sum(1 for m in members if m in mods))
+                if gap:
+                    pooled = sum(cat[m].mod_frequency() for m in members
+                                 if m in cat and m not in mods)
+                    logs += [math.log(g_for(min(1.0, pooled)))] * gap
+            elif r.key not in mods:
+                info = cat.get(r.key)
+                freq = info.mod_frequency() if info is not None else None
+                logs.append(math.log(g_for(freq)))
+        return math.exp(sum(logs) / len(logs)) if logs else 1.0
+
     def score(self, item: dict, families: dict[str, "ModFamily"] | None = None,
               scoring: "Scoring | None" = None,
-              affix_slots: dict[str, str] | None = None) -> dict | None:
+              affix_slots: dict[str, str] | None = None,
+              mod_info: "dict[str, ModInfo] | None" = None) -> dict | None:
         """One rule's **contribution** for an item, or None if it doesn't meaningfully match.
 
         ``contribution = quality × completion``:
@@ -524,10 +557,11 @@ class Archetype:
           (no open slots) is scored on its rolled tiers alone; open slots add a craft bonus
           (weighted by ``roll_influence``) only when the kept rolls are good — so a full brick
           can't coast on its archetype value, and crafting onto trash tiers isn't rewarded.
-        * **completion** = ``coverage + (1-coverage)·craft_credit`` when the missing affixes are
-          **reachable** (fit open prefix/suffix slots) — so a finishable partial scores near a
-          full match; a non-reachable partial keeps just its realized ``coverage`` (still good,
-          no upgrade credit). A full match → completion 1.
+        * **completion** = ``coverage + (1-coverage)·craft_credit·G`` when the missing affixes
+          are **reachable** (fit open prefix/suffix slots), where ``G`` is the craftability of
+          the missing mods (:meth:`_craftability`) — a partial finishable with common mods
+          scores near a full match; one needing chase mods keeps little upgrade credit. A
+          non-reachable partial keeps just its realized ``coverage``; a full match → 1.
         Below the partial floor (and magic needing ≥2 high-tier kept affixes) → no match."""
         sc = scoring or Scoring()
         fams = families or {}
@@ -577,36 +611,59 @@ class Archetype:
         mod_score = (tvsum / wsum) if (wsum and sat) else 0.0
         kept_quality = (tvsum / sat_wsum) if sat_wsum else 0.0
         base_factor = self.bases.factor_for(item.get("base"))
+        # Craftability of what's missing — gates every form of upgrade credit below.
+        G = 1.0 if full else self._craftability(mods, fams, sc, mod_info)
         lockin = 1.0
         if is_magic:
-            # A magic is a *craft base*: its kept affixes are fully realized and the open slots are
-            # pure upside (not a coverage deficiency), so completion rides high and value rides on
-            # the tier of those affixes. Versatility (breadth) separates a premium base — gated by
-            # ``kept_quality`` in ``score_item``, so it only pays off on good rolls. A base with just
-            # one locked high-tier affix (``hi`` < 2) is worth less than a two-affix one (the second
-            # good mod still has to be *hit*, even if cheap to add) → ``magic_solo`` lock-in factor.
+            # A magic is a *craft base*: its kept affixes are fully realized; the open slots are
+            # upside, but only as plausible as the mods still needed (``G``): completion blends
+            # the realized fraction of the finished item up toward ``magic_completion`` by ``G``,
+            # so a base needing life+res still rides ≈magic_completion while one whose rule needs
+            # chase mods completes near its realized fraction — the market's distinction
+            # (Potency 35 ex vs Rapidity 1 ex at near-equal flat scores; RESEARCH_LOG §7).
+            # ``magic_solo`` lock-in (one locked high-tier affix vs two) is unchanged.
             lockin = 1.0 if hi >= 2 else sc.magic_solo
-            completion = sc.magic_completion * lockin
+            realized = min(1.0, sat_units / craft_max) if craft_max else 0.0
+            completion = lockin * (realized + max(0.0, sc.magic_completion - realized) * G)
             quality = self.value.score * kept_quality * base_factor
         else:
-            completion = coverage + (1.0 - coverage) * (sc.craft_credit if reachable else 0.0)
+            completion = coverage + (1.0 - coverage) * (sc.craft_credit * G if reachable else 0.0)
             # Value is roll-driven: a *finished* item (no open slots) is scored on its tiers alone,
             # so a bricked full item can't coast on its archetype value. Open slots add a craft
             # bonus, but only on a base whose kept rolls are worth building on (``potential`` is
-            # gated by ``mod_score``) — crafting onto trash tiers is not rewarded. ``headroom`` 0
-            # (full) ⇒ ``blend = mod_score``; an empty base with good rolls lifts toward the ceiling.
+            # gated by ``mod_score``) and only toward plausibly-hittable mods (``G``). ``headroom``
+            # 0 (full) ⇒ ``blend = mod_score``; an empty base with good rolls lifts toward the ceiling.
             denom = CLASS_MAX_AFFIXES.get(self.item_class, sc.craft_target)
             headroom = min(1.0, max(0, free) / denom) if denom else 0.0
-            potential = mod_score * headroom
+            potential = mod_score * headroom * G
             blend = mod_score + (1.0 - mod_score) * sc.roll_influence * potential
             quality = self.value.score * blend * base_factor
         contribution = max(0.0, min(1.0, quality * completion))
+        # The now/potential split (informational; ``contribution`` stays the blended score):
+        # ``now`` = the item untouched (zero craft terms); ``potential`` = the risk-discounted
+        # value of finishing it (the rule's value scaled by completion-probability G). The
+        # popup and the pricing planner branch on which side dominates.
+        if is_magic:
+            realized_frac = min(1.0, sat_units / craft_max) if craft_max else 0.0
+            now = quality * lockin * realized_frac
+            potential = contribution
+        else:
+            # as-is = rule value × fraction present × pure tier of what's present (NOT
+            # ``mod_score``, which already embeds coverage — that would count it twice).
+            now = self.value.score * kept_quality * base_factor * coverage
+            potential = now
+            if not full and reachable and free > 0:
+                potential = max(now, self.value.score * base_factor
+                                * (coverage + (1.0 - coverage) * G))
+        now = max(0.0, min(1.0, now))
+        potential = max(0.0, min(1.0, potential))
         return {
             "archetype": self.id, "value": round(contribution, 3),
             "contribution": round(contribution, 3), "quality": round(quality, 3),
             "completion": round(completion, 3), "tier": value_to_tier(contribution),
             "coverage": round(coverage, 3), "satisfied": sat, "required": n, "full": full,
-            "reachable": reachable, "free_slots": free,
+            "reachable": reachable, "free_slots": free, "craftability": round(G, 3),
+            "now": round(now, 3), "potential": round(potential, 3),
             "mod_score": round(mod_score, 3), "kept_quality": round(kept_quality, 3),
             "lockin": round(lockin, 3), "base_factor": round(base_factor, 3),
             "base_grade": self.bases.grades.get(item.get("base", ""), None),
@@ -862,11 +919,12 @@ class ArchetypeSet:
         """Enabled archetypes the item matches, each scored (with this set's ``scoring``) and
         ranked by contribution (desc). This is the **per-rule** list; ``score_item`` aggregates
         it into a single headline score."""
+        cat = self.mods.get(item.get("class") or "")
         out = []
         for a in self.archetypes:
             if not a.enabled:
                 continue
-            s = a.score(item, self.mod_families, self.scoring, self.affix_slots)
+            s = a.score(item, self.mod_families, self.scoring, self.affix_slots, mod_info=cat)
             if s is not None:
                 out.append(s)
         out.sort(key=lambda s: s["value"], reverse=True)
@@ -899,7 +957,8 @@ class ArchetypeSet:
         floor = self.rarity_floor(item)
         if not matches:
             return {"overall": round(floor, 3), "peak": 0.0, "breadth": 0.0,
-                    "floor": round(floor, 3), "matches": []}
+                    "floor": round(floor, 3), "now": round(floor, 3),
+                    "potential": round(floor, 3), "driver": "now", "matches": []}
         peak = matches[0]["contribution"]
         seen: set[str] = set()
         top = by_id.get(matches[0]["archetype"])
@@ -918,8 +977,16 @@ class ArchetypeSet:
         # everywhere") doesn't ride breadth up into finished-item tiers.
         gate = matches[0].get("kept_quality", peak) * matches[0].get("lockin", 1.0)
         overall = max(peak + (1.0 - peak) * breadth * gate, floor)
+        # The peak rule's now/potential split, surfaced for the UI badge and the pricing
+        # planner's finished-vs-potential branch. ``driver`` flags items whose value is
+        # mostly *crafting* upside rather than what's already rolled.
+        top_m = matches[0]
+        now, potential = top_m.get("now", peak), top_m.get("potential", peak)
+        driver = "craft" if (not top_m.get("full") and potential > now + 0.05) else "now"
         return {"overall": round(overall, 3), "peak": round(peak, 3),
-                "breadth": round(breadth, 3), "floor": round(floor, 3), "matches": matches}
+                "breadth": round(breadth, 3), "floor": round(floor, 3),
+                "now": round(now, 3), "potential": round(potential, 3), "driver": driver,
+                "matches": matches}
 
     def upgrade_targets(self, item: dict) -> list[dict]:
         """Enabled rules this item could be **crafted into** (every missing affix fits an open
@@ -942,6 +1009,8 @@ class ArchetypeSet:
                 if info is not None and info.pool > 0 and info.tiers:
                     m["chance"] = round(info.mod_frequency(), 4)
                     m["rarity"] = round(rarity_amp(info.mod_frequency(), self.scoring), 2)
+            t["craftability"] = round(a._craftability(
+                item.get("mods") or {}, self.mod_families, self.scoring, cat), 3)
             out.append(t)
         out.sort(key=lambda t: (t["value"], t["units"]), reverse=True)
         return out

@@ -146,6 +146,14 @@ def summarize(
     )
 
 
+# Total search matches at/above which a market counts as fully liquid. 6x the ladder's
+# "enough" (8): a 10-of-10-match search fetches a full cheapest-N, but those 10 asks are
+# the WHOLE market — illiquid niche rares are priced by other people's hopeful unsold
+# listings (validated against 353 in-app checks: every "expensive junk" appraisal rested
+# on 9-30 total matches; see archetype_miner/RESEARCH_LOG.md §7).
+LIQUID_TOTAL = 48
+
+
 def compute_confidence(
     stats: PriceStats,
     *,
@@ -154,19 +162,24 @@ def compute_confidence(
     relaxed_steps: int,
     is_floor: bool,
     rates_stale: bool,
+    total_matches: int | None = None,
 ) -> float:
-    """0..1 confidence. High when we have a full cheapest-N of same-currency listings, every
-    requested filter mapped to a real id, a tight band, and the ladder didn't relax; low when
-    samples are thin, filters were dropped/unmapped, the band is wide, we relaxed far, the
-    estimate is a floor, or the currency rates are stale."""
+    """0..1 confidence. High when we have a full cheapest-N of same-currency listings out
+    of a LIQUID market (``total_matches``), every requested filter mapped to a real id, a
+    tight band, and the ladder didn't relax; low when samples or the market are thin,
+    filters were dropped/unmapped, the band is wide, we relaxed far, the estimate is a
+    floor, or the currency rates are stale. ``total_matches`` None (older callers) skips
+    the liquidity term by treating the market as liquid."""
     sample = min(1.0, stats.n_samples / max(1, cheapest_n))
+    liquidity = 1.0 if total_matches is None else min(1.0, total_matches / LIQUID_TOTAL)
     spread_penalty = min(1.0, stats.spread / 1.5)          # spread of ~1.5 IQR/median → full penalty
     relax_penalty = min(1.0, relaxed_steps * 0.25)         # each rung relaxed costs 0.25
     dropped_penalty = 0.2 if stats.dropped else 0.0
     conf = (
-        0.40 * sample
-        + 0.30 * max(0.0, min(1.0, mapped_fraction))
-        + 0.30 * (1.0 - spread_penalty)
+        0.30 * sample
+        + 0.20 * liquidity
+        + 0.25 * max(0.0, min(1.0, mapped_fraction))
+        + 0.25 * (1.0 - spread_penalty)
     )
     conf *= (1.0 - relax_penalty)
     conf -= dropped_penalty

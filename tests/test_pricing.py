@@ -72,6 +72,24 @@ def test_confidence_drops_with_relaxation_and_floor():
     assert floor < full
 
 
+def test_confidence_penalizes_thin_markets():
+    """A 10-of-10-match fetch must NOT score a full sample factor: the asks ARE the whole
+    market (the 'expensive junk' forensics — every bad appraisal sat on 9-30 matches)."""
+    stats = price.PriceStats(value=10, currency="exalted", low=9, high=11, spread=0.2,
+                             n_samples=10, dropped=0)
+    kw = dict(cheapest_n=10, mapped_fraction=1.0, relaxed_steps=0,
+              is_floor=False, rates_stale=False)
+    liquid = price.compute_confidence(stats, total_matches=500, **kw)
+    thin = price.compute_confidence(stats, total_matches=10, **kw)
+    very_thin = price.compute_confidence(stats, total_matches=9, **kw)
+    legacy = price.compute_confidence(stats, **kw)        # no total -> treated liquid
+    assert liquid == legacy
+    assert very_thin < thin < liquid
+    assert liquid - thin >= 0.15                          # material, not cosmetic
+    at_threshold = price.compute_confidence(stats, total_matches=price.LIQUID_TOTAL, **kw)
+    assert at_threshold == pytest.approx(liquid)
+
+
 # --- query executor + ladder + signature -------------------------------
 
 def _plan():
@@ -388,6 +406,33 @@ def _magic_with_affixes(n):
             "explicitMods": [f"+15 thing{i}" for i in range(n)],
             "extended": {"mods": {"explicit": emods},
                          "hashes": {"explicit": [[f"explicit.stat_{i}", [i]] for i in range(n)]}}}
+
+
+def _rare_with_affixes(n):
+    item = _magic_with_affixes(n)
+    item["frameType"] = 2
+    return item
+
+
+def test_eval_hint_overrides_finished_vs_potential():
+    """The evaluator's now/potential verdict beats the affix-count heuristic (Design 2's
+    pricing seam): a craft-driven rare prices as rare_potential even when it LOOKS
+    finished, and vice versa."""
+    from stasher.pricing import STRATEGY_RARE_POTENTIAL, plan
+
+    looks_finished = _rare_with_affixes(6)
+    by_count = plan.build_for_item(looks_finished)
+    as_craft = plan.build_for_item(looks_finished, eval_hint={"driver": "craft"})
+    as_now = plan.build_for_item(looks_finished, eval_hint={"driver": "now"})
+    assert by_count.strategy == as_now.strategy == STRATEGY_RARE_FINISHED
+    # a craft verdict carries the item into the potential branch on its own authority
+    assert as_craft.strategy == STRATEGY_RARE_POTENTIAL
+
+    sparse = _rare_with_affixes(3)
+    craft = plan.build_for_item(sparse, eval_hint={"driver": "craft"})
+    now = plan.build_for_item(sparse, eval_hint={"driver": "now"})
+    assert craft.strategy == STRATEGY_RARE_POTENTIAL
+    assert now.strategy == STRATEGY_RARE_FINISHED      # verdict says sell as-is
 
 
 def test_magic_one_open_slot_prices_with_crafting_headroom():

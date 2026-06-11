@@ -1,6 +1,16 @@
 # Evaluation Engine Improvements — Implementation Plan
 
-> Status: **planned** (2026-06-12). Grounded in the first full price-sampling cycle and
+> Status: **EXECUTED + SHIPPED** (2026-06-12, set marker `0.2.0b9-craftability`). Corpus
+> results: overall ρ 0.014→**0.251**, Magic −0.043→**+0.135**, Jewels +0.144→**+0.451**,
+> Rare preserved (+0.247); tier-band medians now economically ordered (A 10 ex / B 5 /
+> C–D 1.5). Knobs corpus-fit: `magic_completion 0.95→0.85`, `magic_solo 0.55→0.35` (flat
+> plateau 0.75–0.85 × 0.30–0.40; mid chosen against overfitting). Deviation from the
+> Phase-3 spec: `overall` keeps the proven blended aggregation; now/potential/driver are
+> surfaced alongside it (rank-preserving) rather than `overall = max(now, potential)`.
+> Known residual: high-confidence expensive MAGIC items with a chase mod KEPT (the value
+> is the kept mod, not the craft) can under-score — next corpus iteration's target.
+>
+> Original plan below. Grounded in the first full price-sampling cycle and
 > the 353-check in-app validation study — see `archetype_miner/RESEARCH_LOG.md` (sibling
 > repo) for the artifacts and conclusions this plan cites. Scope: Designs 1+2
 > (probabilistic completion + now/potential split), the price-check liquidity fix, and

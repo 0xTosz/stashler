@@ -63,6 +63,10 @@ class ArchetypeSetChecker:
             headline += f" · {n} matches"
         elif not matches:
             headline += " · rare mod"
+        # Value driven by crafting upside rather than what's already rolled → ⚒ marker
+        # (the now/potential split; details in the popup's score math).
+        if scored.get("driver") == "craft":
+            headline += " · ⚒ craft"
         # The headline carries the *true* match total (n); only TOP_K per-rule reasons follow, so
         # the count must come from here, not from the surfaced reasons.
         out: list[CheckResult] = [CheckResult("archetype_set", headline, score=overall, count=n)]
@@ -136,6 +140,9 @@ class ArchetypeSetChecker:
                 "tier": value_to_tier(scored["overall"]),
                 "peak": scored["peak"], "breadth": scored["breadth"],
                 "floor": scored.get("floor", 0.0),
+                "now": scored.get("now", scored["peak"]),
+                "potential": scored.get("potential", scored["peak"]),
+                "driver": scored.get("driver", "now"),
                 "scoring": sc.to_dict(),
                 "rarity": {"rows": rarity_rows, "total": round(group_sum, 3),
                            "build": self._name_by_id.get(group_arch, group_arch)},

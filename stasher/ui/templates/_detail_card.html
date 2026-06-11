@@ -37,6 +37,10 @@
     <span class="muted">overall = max(peak {{ '%.2f'|format(b.peak) }}
       {%- if b.breadth > 0 %} + breadth {{ '%.2f'|format(b.breadth) }}{% endif %},
       rarity-floor {{ '%.2f'|format(b.floor) }})</span>
+    {% if b.driver == 'craft' %}
+    <span class="muted" title="Most of this value is crafting upside, not what's already rolled">
+      ⚒ as-is {{ '%.2f'|format(b.now) }} / craft potential {{ '%.2f'|format(b.potential) }}</span>
+    {% endif %}
   </div>
   <p class="rp-warn">⚠ Disabling a rule saves immediately but is <em>global</em> — queue scores
     update only after <a href="{{ url_for('rules') }}">Rules → Re-evaluate archive</a>.</p>
@@ -104,6 +108,10 @@
         <strong>{{ t.name }}</strong>
         <span class="muted rp-target-cov">{{ t.satisfied }}/{{ t.required }} now</span>
       </div>
+      {% if t.craftability is defined and t.craftability < 1.0 %}
+      <div class="muted">completion odds ×{{ '%.2f'|format(t.craftability) }}
+        (geometric mean of the missing mods' spawn odds vs a common mod)</div>
+      {% endif %}
       <table class="rp-missing">
         <tr><th>missing affix</th><th>slot</th></tr>
         {% for mm in t.missing %}

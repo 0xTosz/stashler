@@ -58,11 +58,15 @@ def _age_hours(iso: str | None) -> float | None:
 
 
 class PricingService:
-    def __init__(self, store, source, league_getter, *, grade=None):
+    def __init__(self, store, source, league_getter, *, grade=None, hint_getter=None):
         self.store = store
         self.source = source
         self._league = league_getter
         self._grade = grade
+        # Optional evaluator verdict for an item ({"driver": "now"|"craft", ...}) — decides
+        # the rare finished-vs-potential plan strategy. Never lets a hint failure block a
+        # price check.
+        self._hint_getter = hint_getter
 
         self._q: "queue.Queue[tuple[str, dict]]" = queue.Queue()
         self._queued: set[str] = set()
@@ -72,6 +76,14 @@ class PricingService:
         self._last_error: str | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def _hint(self, item: dict) -> dict | None:
+        if self._hint_getter is None:
+            return None
+        try:
+            return self._hint_getter(item)
+        except Exception:  # noqa: BLE001 — hints are best-effort
+            return None
 
     # --- lifecycle ------------------------------------------------------
 
@@ -97,7 +109,7 @@ class PricingService:
     def lookup(self, item: dict) -> dict:
         """Cache-only result for an item (no network): exact hit (fresh/stale by TTL), else a
         fuzzy 'similar' hit, else a miss. Always returns the computed ``plan_sig``."""
-        plan = _plan.build_for_item(item, grade=self._grade)
+        plan = _plan.build_for_item(item, grade=self._grade, eval_hint=self._hint(item))
         league = self._league()
         sig = _query.plan_sig(plan, league)
         exact = self.store.get_cached_price(sig, league)
@@ -161,7 +173,7 @@ class PricingService:
                 self._q.task_done()
 
     def _price_one(self, item_hash: str, item: dict) -> None:
-        plan = _plan.build_for_item(item, grade=self._grade)
+        plan = _plan.build_for_item(item, grade=self._grade, eval_hint=self._hint(item))
         league = self._league()
         est = _pricer.estimate(plan, self.source, league=league)
         self.store.cache_price(

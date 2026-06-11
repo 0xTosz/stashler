@@ -125,11 +125,25 @@ class Stasher:
             from .pricing.appraise import PricingService
             from .pricing.pricer import TradeClientSource
 
+            def eval_hint(item: dict) -> dict | None:
+                """The archetype model's now/potential verdict for one item — decides the
+                rare finished-vs-potential plan strategy. None when no set checker loaded."""
+                from .evaluate.checks.archetype_set import ArchetypeSetChecker, model_item
+
+                checker = next((c for c in self.evaluator.checkers
+                                if isinstance(c, ArchetypeSetChecker)), None)
+                if checker is None:
+                    return None
+                scored = checker.aset.score_item(model_item(item))
+                return {"driver": scored.get("driver", "now"),
+                        "now": scored.get("now"), "potential": scored.get("potential")}
+
             self._pricing = PricingService(
                 self.store,
                 TradeClientSource(self.client),
                 league_getter=lambda: self.store.get_setting("league", self.config.league)
                 or self.config.league,
+                hint_getter=eval_hint,
             )
         return self._pricing
 

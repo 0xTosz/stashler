@@ -81,7 +81,11 @@ def estimate(
         stats, cheapest_n=cheapest_n, mapped_fraction=mapped_fraction,
         relaxed_steps=relaxed_steps, is_floor=is_floor,
         rates_stale=False,  # TODO: compare rates_sampled_at() against a freshness threshold
+        total_matches=chosen.total,
     )
+    if chosen.total < _price.LIQUID_TOTAL:
+        notes = notes + [f"thin market: only {chosen.total} listings match — asks may "
+                         "not reflect sale prices."]
     return PriceEstimate(
         value=stats.value, currency=stats.currency, low=stats.low, high=stats.high,
         n_samples=stats.n_samples, total_matches=chosen.total, confidence=confidence,

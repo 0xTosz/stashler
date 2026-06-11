@@ -140,8 +140,14 @@ def build_for_item(
     *,
     grade: Grader | None = None,
     max_filters: int = _MAX_FILTERS,
+    eval_hint: dict | None = None,
 ) -> FilterPlan:
-    """Build the search plan for one ``/fetch`` item dict (the ``item`` sub-object)."""
+    """Build the search plan for one ``/fetch`` item dict (the ``item`` sub-object).
+
+    ``eval_hint`` is the evaluator's verdict for this item (when an archetype set is
+    loaded): ``{"driver": "now"|"craft", ...}`` — ``craft`` means the item's value is
+    mostly crafting upside (the model's now/potential split), which decides the rare
+    finished-vs-potential strategy better than the affix-count heuristic."""
     rarity = _rarity_option(item)
     base = itemdata.base_type(item) or None
     type_filters = {"filters": {}}
@@ -173,11 +179,17 @@ def build_for_item(
 
     # --- rare: finished (aggregate-anchored) vs potential (base + open slots) -------
     _affixes = pseudo.item_stat_totals(item)
-    affix_count = len(_affixes)  # TODO(eval): use real affix/free-slot counts.
+    affix_count = len(_affixes)  # fallback heuristic when no evaluator hint is available
     finished = affix_count >= _FINISHED_AFFIXES
+    hint_driver = (eval_hint or {}).get("driver")
+    if hint_driver in ("now", "craft"):
+        finished = hint_driver == "now"   # the model's now/potential verdict wins
     strong_base = bool(aggregates.headline_for(item))  # TODO(eval): use the defence gate.
 
-    if finished or not strong_base:
+    # A "craft" verdict carries the item into the potential branch on its own authority
+    # (the model already judged the base worth building on); without a hint, only an
+    # aggregate-anchored (strong) base can hold a potential plan together.
+    if finished or (not strong_base and hint_driver != "craft"):
         # Finished: anchor on the headline aggregate (base-agnostic → no exact base).
         agg = _aggregate_filters(item, droppable=False)
         filters = (agg + pseudo_fs + explicit_fs)[: max_filters + len(agg)]
