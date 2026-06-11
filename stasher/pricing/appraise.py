@@ -150,11 +150,14 @@ class PricingService:
 
     # --- automatic price checks (threshold-driven, off by default) -------
 
-    def maybe_auto_request(self, item_hash: str, item: dict, evaluation) -> bool:
-        """Enqueue a price check for a freshly evaluated item when auto-pricing is on and
-        its current (as-is) or crafting score crosses the configured threshold (a 0
-        threshold disables that basis). Skips items whose plan already has a FRESH cached
-        estimate — automation must never spend budget on what's already known. Returns
+    def maybe_auto_request(self, item_hash: str, item: dict, evaluation, *,
+                           require_unpriced: bool = False) -> bool:
+        """Enqueue a price check for an evaluated item when auto-pricing is on and its
+        current (as-is) or crafting score crosses the configured threshold (a 0 threshold
+        disables that basis). Cache discipline — automation must never spend budget on
+        what's already known: a FRESH cached estimate always skips, and with
+        ``require_unpriced`` (the bulk re-evaluation path) anything short of a complete
+        cache miss skips (stale/similar data still counts as "has price data"). Returns
         True when a check was actually queued."""
         cfg = auto_price_config(self.store)
         if not cfg["enabled"]:
@@ -166,7 +169,8 @@ class PricingService:
         if not hit:
             return False
         try:
-            if self.lookup(item).get("status") == "fresh":
+            status = self.lookup(item).get("status")
+            if status == "fresh" or (require_unpriced and status != "miss"):
                 return False
         except Exception:  # noqa: BLE001 — a lookup hiccup shouldn't block the check
             pass

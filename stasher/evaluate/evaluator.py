@@ -174,12 +174,15 @@ class Evaluator:
         self,
         progress: Callable[[int, int], None] | None = None,
         force: bool = False,
+        on_evaluated: Callable[[str, dict, object], None] | None = None,
     ) -> dict:
         """(Re)check stored items. Returns a summary with a per-rule breakdown.
 
         ``force`` re-checks everything; otherwise only items whose stored evaluation
-        is missing or was produced by a different rules version.
-        """
+        is missing or was produced by a different rules version. ``on_evaluated``
+        (item_hash, item, evaluation) is called per item — the facade uses it to
+        auto-enqueue price checks for items crossing the configured thresholds that
+        have no price data yet; failures never interrupt the pass."""
         evaluated = 0
         flagged = 0
         by_rule: Counter[str] = Counter()
@@ -191,6 +194,11 @@ class Evaluator:
             item = entry.get("item") or {}
             ev = evaluate_item(item, self.checkers)
             self.store.upsert_evaluation(item_hash, ev, self.rules_hash)
+            if on_evaluated is not None:
+                try:
+                    on_evaluated(item_hash, item, ev)
+                except Exception:  # noqa: BLE001
+                    pass
             evaluated += 1
             if ev.flagged:
                 flagged += 1

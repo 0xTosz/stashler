@@ -49,18 +49,21 @@ class Stasher:
         set_change = install_archetype_set(config.rules_path, config.data_dir, self.store)
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
 
-        def _auto_price(item_hash: str, item: dict, evaluation) -> None:
-            """Auto price check for fresh captures crossing the configured score
+        def _auto_price(item_hash: str, item: dict, evaluation, *,
+                        require_unpriced: bool = False) -> None:
+            """Auto price check for evaluated items crossing the configured score
             thresholds (off by default; toggled next to Auto-refresh). Best-effort —
-            never lets pricing problems interfere with capture."""
+            never lets pricing problems interfere with capture/evaluation."""
             try:
                 from .pricing.appraise import AUTO_PRICE_ENABLED_KEY
                 if self.store.get_setting(AUTO_PRICE_ENABLED_KEY, "0") != "1":
                     return  # off (the default): don't even build the pricing service
-                self.pricing().maybe_auto_request(item_hash, item, evaluation)
+                self.pricing().maybe_auto_request(item_hash, item, evaluation,
+                                                  require_unpriced=require_unpriced)
             except Exception:  # noqa: BLE001
                 pass
 
+        self._auto_price = _auto_price
         self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator,
                                  on_evaluated=_auto_price)
         self._worker: Worker | None = None
@@ -120,8 +123,14 @@ class Stasher:
         progress: Callable[[int, int], None] | None = None,
         force: bool = False,
     ) -> dict:
-        """Re-run the rule checkers over stored items. Returns a summary dict."""
-        return self.evaluator.reevaluate_all(progress, force)
+        """Re-run the rule checkers over stored items. Returns a summary dict.
+
+        With auto-pricing enabled, items whose re-evaluated current/crafting score
+        crosses its threshold AND that have no price data yet (a complete cache miss —
+        stale/similar estimates count as data) are enqueued for a price check."""
+        return self.evaluator.reevaluate_all(
+            progress, force,
+            on_evaluated=lambda h, i, e: self._auto_price(h, i, e, require_unpriced=True))
 
     def worker(self) -> Worker:
         if self._worker is None:

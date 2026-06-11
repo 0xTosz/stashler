@@ -440,6 +440,15 @@ def test_auto_price_thresholds_and_toggle(tmp_path):
     svc.lookup = lambda i: {"status": "fresh", "estimate": {}}            # already priced
     assert svc.maybe_auto_request("h5", item, ev) is False
     assert calls == ["h", "h4"]
+
+    # bulk re-evaluation path (require_unpriced): anything short of a complete cache
+    # miss counts as "has price data" — stale and similar estimates are skipped too.
+    for status in ("fresh", "stale", "similar"):
+        svc.lookup = lambda i, s=status: {"status": s, "estimate": {}}
+        assert svc.maybe_auto_request("h6", item, ev, require_unpriced=True) is False
+    svc.lookup = lambda i: {"status": "miss"}
+    assert svc.maybe_auto_request("h6", item, ev, require_unpriced=True) is True
+    assert calls == ["h", "h4", "h6"]
     store.close()
 
 
