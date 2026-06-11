@@ -32,7 +32,7 @@ _DEFAULT_FILTER = _PACKAGE_DIR / "default.filter"
 _DEFAULT_ARCHETYPE_SET = _PACKAGE_DIR / "default_archetype_set.yaml"
 # Bump when the shipped set format/content changes so existing installs pick it up (see
 # ``install_archetype_set``). A 0.1.x install has no marker → treated as outdated.
-ARCHETYPE_SET_VERSION = "0.2.0b7-jewels"
+ARCHETYPE_SET_VERSION = "0.2.0b8-priced"
 ARCHETYPE_SET_BAK_FILENAME = "archetype_set.bak.yaml"
 
 # A single app-managed loot-filter file lives next to the rules file. rules.toml only
