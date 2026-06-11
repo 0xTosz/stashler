@@ -33,10 +33,19 @@ def _stat_filters(item: dict) -> list[dict]:
     return out
 
 
+def _empty_rune_sockets(item: dict) -> int:
+    """Number of **empty** rune sockets = rune-type sockets minus the runes socketed into them
+    (``sockets`` is the capacity, ``socketedItems`` the runes actually in them). Mirrors EE2's
+    ``augmentSockets.empty`` — empty sockets are craftable headroom a buyer values."""
+    sockets = item.get("sockets") or []
+    rune_sockets = sum(1 for s in sockets if isinstance(s, dict) and s.get("type") == "rune")
+    return max(0, rune_sockets - len(item.get("socketedItems") or []))
+
+
 def build_trade_url(item: dict, *, league: str, base_url: str, realm: str,
                     status: str = "any") -> str | None:
-    """A ``pathofexile.com/trade2`` search URL prefilled with this item's base + affixes, or
-    None if there's nothing to anchor on. The search is account-free (market-wide)."""
+    """A ``pathofexile.com/trade2`` search URL prefilled with this item's base + affixes (+ any
+    empty rune sockets), or None if there's nothing to anchor on. Account-free (market-wide)."""
     rarity = (itemdata.rarity(item) or "").lower()
     base = itemdata.base_type(item) or None
     stat_filters = _stat_filters(item)
@@ -48,6 +57,12 @@ def build_trade_url(item: dict, *, league: str, base_url: str, realm: str,
         extra["type_filters"] = {"filters": {"rarity": {"option": rarity}}}
     if stat_filters:
         extra["stats"] = [{"type": "and", "filters": stat_filters}]
+    # Empty rune sockets are craftable headroom (EE2 "auto-fill empty rune sockets") — require
+    # the comparable to have at least as many. Trade2's `rune_sockets` is total sockets, the
+    # closest available filter; the user can ease it on the site.
+    empty_sockets = _empty_rune_sockets(item)
+    if empty_sockets:
+        extra["equipment_filters"] = {"filters": {"rune_sockets": {"min": empty_sockets}}}
     # A rare's generated name isn't a searchable filter; only anchor a unique by name.
     name = itemdata.name(item) if rarity == "unique" else None
 

@@ -207,7 +207,11 @@
     .price-line .pl-k { color: #9aa1ab; }
     .price-line .pl-v { color: #e0c074; }
     .price-line .pl-v.muted { color: #8b929c; }
-    .price-line .pl-btn { margin-left: auto; font-size: 11px; padding: 2px 9px; }
+    .price-line .pl-actions { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+    .price-line .pl-icon { font-size: 12px; line-height: 1.2; padding: 2px 8px; text-decoration: none; }
+    a.pl-icon { display: inline-flex; align-items: center; background: #2a2f37; color: #8ab6ff;
+      border: 1px solid #3a414b; border-radius: 5px; }
+    a.pl-icon:hover { background: #343b45; }
     .price-line .pl-age { font-size: 11px; margin-top: 1px; }
     /* actions block */
     .qactions .qbtn-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -215,9 +219,6 @@
     .note-toggle { display: block; background: none; border: none; color: #9aa1ab;
       font-size: 12px; cursor: pointer; padding: 0; margin-top: 9px; text-align: left; }
     .note-toggle.has-note { color: #8ab6ff; }
-    .trade-link { display: inline-block; margin-top: 4px; font-size: 12px; color: #8ab6ff;
-      text-decoration: none; }
-    .trade-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>

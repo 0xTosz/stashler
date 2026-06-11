@@ -335,6 +335,27 @@ def test_trade_url_unique_uses_name():
     assert q["query"]["name"] == "Headhunter" and q["query"]["type"] == "Leather Belt"
 
 
+def test_trade_url_includes_empty_rune_sockets():
+    from stasher.pricing.tradelink import build_trade_url
+    # 2 rune sockets, 1 socketed rune -> 1 empty rune socket.
+    item = {"frameType": 2, "baseType": "Vaal Regalia",
+            "sockets": [{"group": 0, "type": "rune"}, {"group": 0, "type": "rune"}],
+            "socketedItems": [{"name": "Fire Rune"}],
+            "extended": {"mods": {"explicit": [
+                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
+    q = _decode_q(build_trade_url(item, league="Standard",
+                                  base_url="https://www.pathofexile.com", realm="poe2"))
+    assert q["query"]["filters"]["equipment_filters"]["filters"]["rune_sockets"]["min"] == 1
+    # A fully-runed item (0 empty) carries no socket filter.
+    full = {"frameType": 2, "baseType": "Vaal Regalia",
+            "sockets": [{"group": 0, "type": "rune"}], "socketedItems": [{"name": "Fire Rune"}],
+            "extended": {"mods": {"explicit": [
+                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
+    q2 = _decode_q(build_trade_url(full, league="Standard",
+                                   base_url="https://www.pathofexile.com", realm="poe2"))
+    assert "equipment_filters" not in q2["query"]["filters"]
+
+
 # --- pseudo aggregation on the real harvested ids ----------------------
 
 def _ext(*mags):

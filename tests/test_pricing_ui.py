@@ -85,7 +85,8 @@ def test_detail_card_shows_blocks_stash_price_and_trade_link():
         # details block: stash tab + a (state-driven) price line + trade link
         assert "Stash" in body and "Quad Tab 3" in body
         assert 'class="price-line"' in body and "not checked" in body  # unpriced item
-        assert "Open on trade site" in body and "/trade2/search/poe2/" in body
+        # trade link is now a ↗ icon next to the price, linking to the prefilled search
+        assert "/trade2/search/poe2/" in body and "pl-icon trade-link" in body
     finally:
         stasher.close()
 

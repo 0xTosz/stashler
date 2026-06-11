@@ -6,7 +6,7 @@
    page's status poll then flips it to queued/pricing and back (see wirePriceLine /
    applyPricingStatus in base.html). The small button runs the first check or a re-check. #}
 
-{% macro price_line(hash, price=None) %}
+{% macro price_line(hash, price=None, trade_url=None) %}
 <div class="price-line" data-hash="{{ hash }}">
   <div class="pl-row">
     <span class="pl-k">Price</span>
@@ -18,7 +18,11 @@
     {%- else %}
     <span class="pl-v muted">not checked</span>
     {%- endif %}
-    <button type="button" class="pl-btn" title="Check / refresh price" aria-label="Check / refresh price">↻</button>
+    <span class="pl-actions">
+      {%- if trade_url %}<a class="pl-icon trade-link" href="{{ trade_url }}" target="_blank" rel="noopener"
+        title="Open on the official trade site — base + every affix + empty rune sockets, restrictive so you can ease filters there">↗</a>{% endif %}
+      <button type="button" class="pl-icon pl-btn" title="Check / refresh price" aria-label="Check / refresh price">↻</button>
+    </span>
   </div>
   <div class="pl-age muted"{% if not (price and price.sampled_at) %} hidden{% endif %}>
     {%- if price and price.sampled_at %}checked <span class="ts" data-ts="{{ price.sampled_at }}"></span>{% endif %}</div>
@@ -31,10 +35,6 @@
     {%- if stash_tab %} <span class="val">{{ stash_tab }}</span>{% else %} <span class="muted">—</span>{% endif %}
     {%- if listed_at %} <span class="muted">· listed <span class="ts" data-ts="{{ listed_at }}"></span></span>{% endif %}
   </div>
-  {{ price_line(hash, price) }}
-  {%- if trade_url %}
-  <a class="trade-link" href="{{ trade_url }}" target="_blank" rel="noopener"
-     title="Open this item's base + every affix as a restrictive search on the official trade site, then ease filters there to find comparables">Open on trade site ↗</a>
-  {%- endif %}
+  {{ price_line(hash, price, trade_url) }}
 </div>
 {% endmacro %}
