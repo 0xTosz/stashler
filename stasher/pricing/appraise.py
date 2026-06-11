@@ -57,6 +57,28 @@ def _age_hours(iso: str | None) -> float | None:
     return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
 
 
+# Automatic price checks: enqueue new captures whose current/crafting score crosses a
+# threshold. OFF by default (the header button next to Auto-refresh toggles it); the two
+# thresholds are configured separately on the Settings page (0 disables that basis).
+AUTO_PRICE_ENABLED_KEY = "auto_price_enabled"
+AUTO_PRICE_MIN_NOW_KEY = "auto_price_min_now"
+AUTO_PRICE_MIN_CRAFT_KEY = "auto_price_min_craft"
+DEFAULT_AUTO_PRICE_MIN = 0.75
+
+
+def auto_price_config(store) -> dict:
+    """{'enabled', 'min_now', 'min_craft'} from settings (clamped 0..1; defaults off/0.75)."""
+    def f(key: str) -> float:
+        try:
+            return max(0.0, min(1.0, float(store.get_setting(key, str(DEFAULT_AUTO_PRICE_MIN))
+                                           or DEFAULT_AUTO_PRICE_MIN)))
+        except (TypeError, ValueError):
+            return DEFAULT_AUTO_PRICE_MIN
+    return {"enabled": store.get_setting(AUTO_PRICE_ENABLED_KEY, "0") == "1",
+            "min_now": f(AUTO_PRICE_MIN_NOW_KEY),
+            "min_craft": f(AUTO_PRICE_MIN_CRAFT_KEY)}
+
+
 class PricingService:
     def __init__(self, store, source, league_getter, *, grade=None, hint_getter=None):
         self.store = store
@@ -125,6 +147,30 @@ class PricingService:
             return {"status": "similar", "estimate": similar["estimate"],
                     "age_hours": _age_hours(similar.get("sampled_at")), "plan_sig": sig}
         return {"status": "miss", "plan_sig": sig}
+
+    # --- automatic price checks (threshold-driven, off by default) -------
+
+    def maybe_auto_request(self, item_hash: str, item: dict, evaluation) -> bool:
+        """Enqueue a price check for a freshly evaluated item when auto-pricing is on and
+        its current (as-is) or crafting score crosses the configured threshold (a 0
+        threshold disables that basis). Skips items whose plan already has a FRESH cached
+        estimate — automation must never spend budget on what's already known. Returns
+        True when a check was actually queued."""
+        cfg = auto_price_config(self.store)
+        if not cfg["enabled"]:
+            return False
+        now = getattr(evaluation, "score_now", None)
+        craft = getattr(evaluation, "score_potential", None)
+        hit = ((cfg["min_now"] > 0 and now is not None and now >= cfg["min_now"])
+               or (cfg["min_craft"] > 0 and craft is not None and craft >= cfg["min_craft"]))
+        if not hit:
+            return False
+        try:
+            if self.lookup(item).get("status") == "fresh":
+                return False
+        except Exception:  # noqa: BLE001 — a lookup hiccup shouldn't block the check
+            pass
+        return bool(self.request(item_hash, item).get("queued"))
 
     # --- enqueue a fresh check ------------------------------------------
 

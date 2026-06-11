@@ -407,6 +407,42 @@ def test_trade_url_single_res_stays_exact():
     assert "pseudo.pseudo_total_elemental_resistance" not in stats
 
 
+def test_auto_price_thresholds_and_toggle(tmp_path):
+    """Auto price checks: off by default; either threshold (current OR craft) queues a
+    check; a 0 threshold disables that basis; a fresh cached estimate is never re-spent."""
+    import types
+
+    from stasher.pricing.appraise import PricingService
+    from stasher.store import Store
+
+    store = Store(str(tmp_path / "t.db"))
+    svc = PricingService(store, None, lambda: "Std")
+    calls = []
+    svc.request = lambda h, i: (calls.append(h), {"ok": True, "queued": True})[1]
+    item = {"frameType": 2, "baseType": "Vaal Regalia",
+            "extended": {"mods": {"explicit": [
+                {"magnitudes": [{"hash": "explicit.stat_life", "min": "90", "max": "110"}]}]}}}
+    ev = types.SimpleNamespace(score_now=0.5, score_potential=0.9)
+
+    assert svc.maybe_auto_request("h", item, ev) is False and not calls   # off by default
+
+    store.set_setting("auto_price_enabled", "1")
+    assert svc.maybe_auto_request("h", item, ev) is True                  # craft 0.9 >= 0.75
+    assert calls == ["h"]
+    low = types.SimpleNamespace(score_now=0.1, score_potential=0.2)
+    assert svc.maybe_auto_request("h2", item, low) is False               # below both
+
+    store.set_setting("auto_price_min_craft", "0")                        # craft basis off
+    assert svc.maybe_auto_request("h3", item, ev) is False                # now 0.5 < 0.75
+    store.set_setting("auto_price_min_now", "0.4")
+    assert svc.maybe_auto_request("h4", item, ev) is True                 # now basis crosses
+
+    svc.lookup = lambda i: {"status": "fresh", "estimate": {}}            # already priced
+    assert svc.maybe_auto_request("h5", item, ev) is False
+    assert calls == ["h", "h4"]
+    store.close()
+
+
 # --- pseudo aggregation on the real harvested ids ----------------------
 
 def _ext(*mags):

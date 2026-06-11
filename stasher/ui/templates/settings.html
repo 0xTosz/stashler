@@ -141,6 +141,27 @@
         onsubmit="return confirm('Clear all {{ price_cache_count }} cached price(s)?');">
     <button type="submit">Clear price cache ({{ price_cache_count }})</button>
   </form>
+
+  <hr style="border:none; border-top:1px solid #23272e; margin:14px 0">
+  <strong>Automatic price checks</strong>
+  <p class="muted" style="margin:6px 0 10px;">When enabled (the
+    <em>Auto-price</em> button in the header, next to Auto-refresh), newly captured items are
+    price-checked automatically if their <em>current</em> (as-is) or <em>crafting</em> score
+    crosses its threshold. Applies to fresh captures only — never to bulk re-evaluations — and
+    skips items with a fresh cached price.
+    Currently: <span class="{{ 'ok' if auto_price.enabled else 'muted' }}">
+      {{ 'on' if auto_price.enabled else 'off' }}</span></p>
+  <form method="post" action="{{ url_for('settings_autoprice') }}"
+        style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <label class="chk" title="Queue a check when the as-is score reaches this (0 = ignore this basis)">
+      Min current score <input type="number" name="min_now" min="0" max="1" step="0.05"
+        value="{{ '%.2f'|format(auto_price.min_now) }}" style="width:72px"></label>
+    <label class="chk" title="Queue a check when the crafting-potential score reaches this (0 = ignore this basis)">
+      Min craft ⚒ score <input type="number" name="min_craft" min="0" max="1" step="0.05"
+        value="{{ '%.2f'|format(auto_price.min_craft) }}" style="width:72px"></label>
+    <button type="submit">Save thresholds</button>
+    <span class="muted">an item is queued when EITHER threshold is crossed · 0 = off</span>
+  </form>
 </div>
 
 <hr style="border:none; border-top:1px solid #23272e; margin:22px 0">

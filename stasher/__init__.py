@@ -48,7 +48,21 @@ class Stasher:
         # outdated set — backing the old one up). Before the Evaluator so it loads it.
         set_change = install_archetype_set(config.rules_path, config.data_dir, self.store)
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
-        self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
+
+        def _auto_price(item_hash: str, item: dict, evaluation) -> None:
+            """Auto price check for fresh captures crossing the configured score
+            thresholds (off by default; toggled next to Auto-refresh). Best-effort —
+            never lets pricing problems interfere with capture."""
+            try:
+                from .pricing.appraise import AUTO_PRICE_ENABLED_KEY
+                if self.store.get_setting(AUTO_PRICE_ENABLED_KEY, "0") != "1":
+                    return  # off (the default): don't even build the pricing service
+                self.pricing().maybe_auto_request(item_hash, item, evaluation)
+            except Exception:  # noqa: BLE001
+                pass
+
+        self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator,
+                                 on_evaluated=_auto_price)
         self._worker: Worker | None = None
         self._pricing = None
         # A set upgrade changes the rules hash, so the stored archive is now stale. Refresh it in

@@ -239,6 +239,7 @@
       <a class="navlink" href="{{ url_for('log') }}">Log</a>
       <a class="navlink" id="nav-settings" href="{{ url_for('settings') }}">Settings</a>
       <button id="btn-auto" title="Keep the archive current: the app polls for new listings and runs periodic full backfills automatically">Auto-refresh: off</button>
+      <button id="btn-autoprice" title="Automatically price-check new captures whose current/crafting score crosses the thresholds set in Settings">Auto-price: off</button>
       <span class="rate-toggle"
             title="Restrictive reserves part of the API budget so browsing the trade site in your browser doesn't trip the per-IP limit">
         <span class="muted">Rate:</span>
@@ -278,6 +279,13 @@
       if (autoBtn.disabled) return;
       autoBtn.disabled = true;
       await post((st.auto_state === 'off' || !st.auto_state) ? '/api/auto/start' : '/api/auto/stop');
+    };
+    // Auto-price toggle: same pattern as Auto-refresh (state comes from the status poll).
+    const autoPriceBtn = document.getElementById('btn-autoprice');
+    autoPriceBtn.onclick = async () => {
+      if (autoPriceBtn.disabled) return;
+      autoPriceBtn.disabled = true;
+      await post('/api/autoprice/' + (st.auto_price ? 'off' : 'on'));
     };
     // Manual backfill controls removed: Auto-refresh manages backfill vs. light poll itself.
     // Live-websocket controls removed: PoE2 encrypts the live payload (see runtime.py).
@@ -461,6 +469,10 @@
         autoBtn.classList.toggle('active', state === 'on');
         autoBtn.title = 'Keep the archive current: the app polls for new listings and runs periodic full backfills automatically';
       }
+
+      autoPriceBtn.textContent = 'Auto-price: ' + (s.auto_price ? 'on' : 'off');
+      autoPriceBtn.disabled = false;
+      autoPriceBtn.classList.toggle('active', !!s.auto_price);
 
       const errEl = document.getElementById('s-error');
       if (s.last_error) errEl.textContent = '⚠ ' + s.last_error;

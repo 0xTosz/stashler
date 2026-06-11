@@ -21,11 +21,16 @@ class Pipeline:
         store: Store,
         on_stored: Callable[[int], None] | None = None,
         evaluator=None,
+        on_evaluated: Callable[[str, dict, object], None] | None = None,
     ):
         self.client = client
         self.store = store
         self.on_stored = on_stored
         self.evaluator = evaluator
+        # Called as (item_hash, item, evaluation) after each NEW capture is scored —
+        # deliberately not on bulk re-evaluations, so automation (auto price checks)
+        # reacts to fresh items only and can never stampede the rate budget.
+        self.on_evaluated = on_evaluated
         self._seen: set[str] = set()
         self._lock = threading.Lock()
 
@@ -51,7 +56,9 @@ class Pipeline:
                         # Score new captures so they reach the review queue immediately.
                         # Never let an evaluation hiccup drop a stored item.
                         try:
-                            self.evaluator.evaluate_entry(entry)
+                            ev = self.evaluator.evaluate_entry(entry)
+                            if self.on_evaluated is not None:
+                                self.on_evaluated(rec.hash, entry.get("item") or {}, ev)
                         except Exception:  # noqa: BLE001
                             pass
         if stored and self.on_stored:

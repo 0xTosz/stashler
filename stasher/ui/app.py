@@ -13,6 +13,12 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from ..config import TRADE_STATUS_OPTIONS, TRADE_STATUS_VALUES
 from ..evaluate.archetype_model import value_to_tier
 from ..evaluate.itemdata import clean_mod_text, stash_regex
+from ..pricing.appraise import (
+    AUTO_PRICE_ENABLED_KEY,
+    AUTO_PRICE_MIN_CRAFT_KEY,
+    AUTO_PRICE_MIN_NOW_KEY,
+    auto_price_config,
+)
 from ..pricing.appraise import data_ready as pricing_data_ready
 from ..pricing.tradelink import build_trade_url
 from .itemcard import build_card
@@ -402,6 +408,7 @@ def create_app(stasher) -> Flask:
             cutoff_rare=store._score_cutoffs()[1],
             price_cache_ttl=store.get_setting("price_cache_ttl_hours", "336") or "336",
             price_cache_count=store.count_price_cache(),
+            auto_price=auto_price_config(store),
             pricing_ready=pricing_data_ready(store)[0],
             pricing_reason=pricing_data_ready(store)[1],
             rules_error=None,
@@ -592,7 +599,28 @@ def create_app(stasher) -> Flask:
     def api_status():
         base = worker.status()
         base["pricing"] = stasher.pricing().status()
+        base["auto_price"] = store.get_setting(AUTO_PRICE_ENABLED_KEY, "0") == "1"
         return jsonify(base)
+
+    @app.route("/api/autoprice/<state>", methods=["POST"])
+    def api_autoprice(state):
+        """Toggle automatic price checks (the header button next to Auto-refresh).
+        Thresholds live on the Settings page; this is just the on/off switch."""
+        on = state == "on"
+        store.set_setting(AUTO_PRICE_ENABLED_KEY, "1" if on else "0")
+        return jsonify({"auto_price": on})
+
+    @app.route("/settings/autoprice", methods=["POST"])
+    def settings_autoprice():
+        """Persist the auto-price thresholds (current / crafting score; 0 disables a basis)."""
+        for field, key in (("min_now", AUTO_PRICE_MIN_NOW_KEY),
+                           ("min_craft", AUTO_PRICE_MIN_CRAFT_KEY)):
+            try:
+                v = max(0.0, min(1.0, float(request.form.get(field, "0") or 0)))
+            except (TypeError, ValueError):
+                continue
+            store.set_setting(key, f"{v:.2f}")
+        return redirect(request.form.get("next") or url_for("settings"))
 
     # --- price checking -------------------------------------------------
 
