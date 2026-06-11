@@ -379,6 +379,31 @@ def test_pseudo_all_ele_res_uses_multiplier():
     assert ele.value == 45  # 15 * 3
 
 
+# --- magic open-slot crafting headroom ---------------------------------
+
+def _magic_with_affixes(n):
+    emods = [{"magnitudes": [{"hash": f"explicit.stat_{i}", "min": "10", "max": "20"}]}
+             for i in range(n)]
+    return {"frameType": 1, "baseType": "Iron Ring",
+            "explicitMods": [f"+15 thing{i}" for i in range(n)],
+            "extended": {"mods": {"explicit": emods},
+                         "hashes": {"explicit": [[f"explicit.stat_{i}", [i]] for i in range(n)]}}}
+
+
+def test_magic_one_open_slot_prices_with_crafting_headroom():
+    from stasher.pricing import plan, pseudo
+    aff = pseudo.empty_slot_ids()["affix"]
+    # 1-affix magic (one open slot) -> requires the comparable to also have an open slot, so it
+    # is not underpriced against junk-filled magics.
+    p1 = plan.build_for_item(_magic_with_affixes(1))
+    f = next((sf for sf in p1.filters if sf.id == aff), None)
+    assert f is not None and f.min == 1 and f.droppable
+    assert any("open affix slot" in n for n in p1.notes)
+    # A full 2-affix magic gets no open-slot filter.
+    p2 = plan.build_for_item(_magic_with_affixes(2))
+    assert aff not in [sf.id for sf in p2.filters]
+
+
 # --- appraisal service + data interlock --------------------------------
 
 def _magic_ring():

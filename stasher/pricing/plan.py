@@ -37,6 +37,7 @@ DISCLAIMER = "Price reflects the base item; runes, sockets and corruption are no
 _RELAX_FRACTION = 0.8     # fallback when an affix carries no tier range (relax_floor from extended).
 _FINISHED_AFFIXES = 5     # TODO(eval): use free_slots/headroom, not a rendered-affix count.
 _MAX_FILTERS = 4
+_MAGIC_MAX_AFFIXES = 2    # a magic item has at most 1 prefix + 1 suffix
 
 
 Grader = Callable[[str], float]  # stat id -> desirability 0..1
@@ -45,6 +46,21 @@ Grader = Callable[[str], float]  # stat id -> desirability 0..1
 def _rarity_option(item: dict) -> str | None:
     r = (itemdata.rarity(item) or "").lower()
     return r if r in ("normal", "magic", "rare", "unique") else None
+
+
+def _open_affix_filter(item: dict, max_affixes: int) -> tuple[list[StatFilter], int]:
+    """A droppable "comparable must have >= this many open affix slots" filter, sized to the
+    item's *own* open count, + that count. Empty when the item is full or the pseudo is
+    unharvested. Prices the crafting headroom of the open slot(s) — without it, the search
+    matches items whose slots are already filled (with junk), which are cheaper and drag the
+    cheapest-N price down."""
+    _, affix_count = itemdata.explicit_affix_mods(item)
+    open_slots = max(0, max_affixes - affix_count)
+    aff = pseudo.empty_slot_ids().get("affix")
+    if open_slots >= 1 and aff:
+        return [StatFilter(TARGET_STATS, min=open_slots, relax_floor=1, droppable=True,
+                          id=aff, group=GROUP_PSEUDO)], open_slots
+    return [], 0
 
 
 def _relax(value: float) -> float:
@@ -142,9 +158,16 @@ def build_for_item(
     pseudo_fs, consumed = _pseudo_filters(item)
     explicit_fs = _explicit_filters(item, grade, exclude=consumed)
 
-    # --- magic: base-anchored ------------------------------------------------------
+    # --- magic: base-anchored (+ crafting headroom for an open slot) ----------------
     if rarity == "magic":
         filters = (pseudo_fs + explicit_fs)[:max_filters]
+        open_fs, open_n = _open_affix_filter(item, _MAGIC_MAX_AFFIXES)
+        if open_fs:
+            # Value the open slot: compare only against equally-craftable magics (an open slot),
+            # not ones whose second slot is already used up. Otherwise 1-affix magics underprice.
+            filters = filters + open_fs
+            notes.append(f"Values {open_n} open affix slot{'s' if open_n != 1 else ''} "
+                         "(crafting potential).")
         return FilterPlan(STRATEGY_MAGIC_BASE, type_filters=type_filters,
                           filters=filters, notes=notes, rarity=rarity, base=base)
 
