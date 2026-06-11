@@ -98,10 +98,12 @@ def test_detail_card_renders_cached_price():
         stasher.store.cache_price(sig, strategy="magic_base", rarity="Magic", base="Iron Ring",
                                   league="Std", filters=[],
                                   estimate={"value": 12, "currency": "divine", "confidence": 0.64,
-                                            "is_floor": False, "n_samples": 8})
+                                            "is_floor": False, "n_samples": 8,
+                                            "sampled_at": "2026-06-11T00:00:00+00:00"})
         stasher.store.set_item_price("abc", sig)
         body = app.test_client().get("/records/abc/card").get_data(as_text=True)
         assert "12 divine" in body and "64%" in body
+        assert "checked" in body and "2026-06-11T00:00:00+00:00" in body  # "checked Nh ago"
     finally:
         stasher.close()
 

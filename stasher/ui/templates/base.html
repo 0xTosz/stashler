@@ -201,12 +201,14 @@
     .qside > .qmatches { padding-top: 0; }
     .qmeta-line { font-size: 12px; line-height: 1.5; }
     .qmeta-line .val { color: #fff; }
-    /* price line: "Price  ~12 div · 64%   [↻]" */
-    .price-line { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 13px; }
+    /* price line: "Price  ~12 div · 64%   [↻]" + a muted "checked Nh ago" under it */
+    .price-line { margin-top: 5px; font-size: 13px; }
+    .price-line .pl-row { display: flex; align-items: center; gap: 8px; }
     .price-line .pl-k { color: #9aa1ab; }
     .price-line .pl-v { color: #e0c074; }
     .price-line .pl-v.muted { color: #8b929c; }
     .price-line .pl-btn { margin-left: auto; font-size: 11px; padding: 2px 9px; }
+    .price-line .pl-age { font-size: 11px; margin-top: 1px; }
     /* actions block */
     .qactions .qbtn-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .qactions button { font-size: 12px; padding: 3px 9px; }
@@ -357,6 +359,13 @@
         v.textContent = 'not checked'; v.className = 'pl-v muted';
       }
       btn.textContent = '↻'; btn.disabled = false;   // always the refresh icon
+      const age = line.querySelector('.pl-age');
+      if (age) {
+        if (e && e.sampled_at) {
+          age.innerHTML = 'checked <span class="ts" data-ts="' + e.sampled_at + '"></span>';
+          age.hidden = false; formatTimes(age);
+        } else { age.hidden = true; age.innerHTML = ''; }
+      }
     }
     async function refreshPriceLine(line) {
       try {
