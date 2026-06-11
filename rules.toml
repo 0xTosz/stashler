@@ -14,28 +14,28 @@
 # "[Fire] Resistance" API markup. Anchor patterns with \+ and digit ranges to stay tight.
 
 # Flat maximum life, top tier only (+120 or more; excludes "Minions have …maximum Life").
-[[regex]]
-name = "High flat life (T1)"
-pattern = "\\+(12\\d|1[3-9]\\d|[2-9]\\d\\d) to maximum Life"
-targets = ["affixes"]
+#[[regex]]
+#name = "High flat life (T1)"
+#pattern = "\\+(12\\d|1[3-9]\\d|[2-9]\\d\\d) to maximum Life"
+#targets = ["affixes"]
 
 # A near-max single elemental/chaos resistance roll (45%+).
-[[regex]]
-name = "High single resist (45%+)"
-pattern = "\\+(4[5-9]|[5-9]\\d)% to (Fire|Cold|Lightning|Chaos) Resistance"
-targets = ["affixes"]
+#[[regex]]
+#name = "High single resist (45%+)"
+#pattern = "\\+(4[5-9]|[5-9]\\d)% to (Fire|Cold|Lightning|Chaos) Resistance"
+#targets = ["affixes"]
 
 # Big "+N to Level of all <type> Skills" (＋4 or more) -- strong on weapons/foci.
-[[regex]]
-name = "Plus to skill level (4+)"
-pattern = "\\+([4-9]|\\d\\d) to Level of all .* Skills"
-targets = ["affixes"]
+#[[regex]]
+#name = "Plus to skill level (4+)"
+#pattern = "\\+([4-9]|\\d\\d) to Level of all .* Skills"
+#targets = ["affixes"]
 
 # Top-tier boot movement speed (30%+).
-[[regex]]
-name = "High movement speed (30%+)"
-pattern = "(3\\d|[4-9]\\d)% increased Movement Speed"
-targets = ["affixes"]
+#[[regex]]
+#name = "High movement speed (30%+)"
+#pattern = "(3\\d|[4-9]\\d)% increased Movement Speed"
+#targets = ["affixes"]
 
 # Uniques rolling near the top of their ranges (worth a manual price check).
 [[unique_roll]]
@@ -46,4 +46,4 @@ aggregate = "avg"
 # Item-filter checker on/off. Edit the filter itself in Settings (or upload one) —
 # it's a single app-managed file, no path needed here.
 [item_filter]
-enabled = true
+enabled = false
