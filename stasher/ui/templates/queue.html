@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_chips.html" import render_chips %}
+{% from "_panel.html" import details_block %}
 {% block content %}
 {% if archive_stale %}
 <form method="post" action="{{ url_for('rules_reevaluate') }}" class="stale-banner">
@@ -63,26 +64,28 @@
   {% include "_item_card.html" %}
 
   <div class="qside">
-    {{ render_chips(it["chips"]) }}
-    <div class="qmeta">
-      <div>Stash tab:
-        {% if it["stash_tab"] %}<span class="val">{{ it["stash_tab"] }}</span>
-        {% else %}<span class="muted">—</span>{% endif %}
+    {# matches #}
+    <div class="qblock qmatches">{{ render_chips(it["chips"]) }}</div>
+    {# details: stash · listed · price #}
+    {{ details_block(it['hash'], it['stash_tab'], it['listed_at'], it['price']) }}
+    {# actions #}
+    <div class="qblock qactions">
+      <div class="qbtn-row">
+        {% if it["stash_regex"] %}<button class="btn-regex" data-regex="{{ it['stash_regex'] }}"
+          title="Copies a search that highlights this item in the stash tab (Ctrl-F)">Copy regex</button>{% endif %}
+        <button class="btn-rules" data-hash="{{ it['hash'] }}"
+          title="See which checkers/rules matched, the score calculation, and craftable upgrade paths">Details</button>
+        {% if it["seen"] %}<span class="muted seen-tag">seen</span>
+        {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
       </div>
-      {% if it["listed_at"] %}<div class="muted">listed <span class="ts" data-ts="{{ it['listed_at'] }}"></span></div>{% endif %}
-      {% if it["stash_regex"] %}<button class="btn-regex" data-regex="{{ it['stash_regex'] }}"
-        title="Copies a search that highlights this item in the stash tab (Ctrl-F)">Copy stash regex</button>{% endif %}
-      <button class="btn-rules" data-hash="{{ it['hash'] }}"
-        title="See which checkers/rules matched, the score calculation, and craftable upgrade paths">Details</button>
-    </div>
-    {% if it["seen"] %}<span class="muted seen-tag">seen</span>
-    {% else %}<button class="btn-seen" data-hash="{{ it['hash'] }}">Mark seen</button>{% endif %}
-    <div class="qfeedback">
-      <textarea class="fb-note" data-hash="{{ it['hash'] }}" rows="2"
-        placeholder="scoring feedback (local)…">{{ it['feedback'] }}</textarea>
-      <div class="fb-row">
-        <button type="button" class="fb-save" data-hash="{{ it['hash'] }}">Save note</button>
-        <span class="fb-status muted"></span>
+      <button type="button" class="note-toggle{{ ' has-note' if it['feedback'] }}">▸ note</button>
+      <div class="qfeedback" hidden>
+        <textarea class="fb-note" data-hash="{{ it['hash'] }}" rows="2"
+          placeholder="scoring feedback (local)…">{{ it['feedback'] }}</textarea>
+        <div class="fb-row">
+          <button type="button" class="fb-save" data-hash="{{ it['hash'] }}">Save note</button>
+          <span class="fb-status muted"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -197,6 +200,22 @@
   modal.querySelectorAll('[data-close]').forEach(el => el.onclick = closeModal);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
 
+  // Collapsible note: hidden until used, with a ● indicator on the toggle when a note exists.
+  function noteLabel(t) {
+    return (t.dataset.open === '1' ? '▾' : '▸') + ' note' + (t.classList.contains('has-note') ? ' ●' : '');
+  }
+  document.querySelectorAll('.note-toggle').forEach(t => {
+    t.textContent = noteLabel(t);
+    t.onclick = () => {
+      const fb = t.parentElement.querySelector('.qfeedback');
+      const open = fb.hidden;
+      fb.hidden = !open;
+      t.dataset.open = open ? '1' : '';
+      t.textContent = noteLabel(t);
+      if (open) fb.querySelector('.fb-note').focus();
+    };
+  });
+
   // TEMP: save per-item scoring feedback locally (one note per item; empty note clears it).
   document.querySelectorAll('.fb-save').forEach(btn => {
     btn.onclick = async () => {
@@ -210,6 +229,8 @@
         });
         const j = await r.json();
         status.textContent = j.stored ? 'saved ✓' : 'cleared';
+        const t = box.parentElement.querySelector('.note-toggle');
+        if (t) { t.classList.toggle('has-note', !!j.stored); t.textContent = noteLabel(t); }
       } catch (e) { status.textContent = 'failed'; }
       btn.disabled = false;
       setTimeout(() => { status.textContent = ''; }, 2000);

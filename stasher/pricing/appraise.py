@@ -133,6 +133,7 @@ class PricingService:
         with self._lock:
             return {
                 "queued": len(self._queued),
+                "queued_hashes": sorted(self._queued),  # lets the UI flag the specific card(s)
                 "in_progress": self._in_progress,
                 "last": dict(self._last) if self._last else None,
                 "last_error": self._last_error,
