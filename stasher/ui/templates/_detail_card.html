@@ -2,31 +2,26 @@
    (/records/<hash>/card). Renders the item card, per-checker chips, non-ruleset reasons, and
    the archetype score breakdown (Matched + Upgrade-paths tabs with per-rule disable toggles).
    Edit here once; both surfaces update. Feature-gates for unflagged / no-match records.
-   Context: c, reasons, chips, other_reasons, score_breakdown (b), hash. #}
+   Context: c, reasons, chips, other_reasons, score_breakdown (b), hash, stash_tab, listed_at,
+   price, trade_url. #}
 {% from "_chips.html" import render_chips %}
+{% from "_panel.html" import details_block %}
 <div class="qcard" style="margin:0;">
   {% include "_item_card.html" %}
   <div class="qside">
-    {{ render_chips(chips) }}
-    {% if other_reasons %}
-    <div class="why">
-      <div class="why-h">Also flagged by</div>
-      {% for reason in other_reasons %}<div class="reason">{{ reason }}</div>{% endfor %}
-    </div>
-    {% endif %}
-    {% if not reasons %}<div class="muted">Not flagged by current rules.</div>{% endif %}
-    <div class="qmeta">
-      <div>Stash tab:
-        {% if stash_tab %}<span class="val">{{ stash_tab }}</span>
-        {% else %}<span class="muted">—</span>{% endif %}
+    {# matches #}
+    <div class="qblock qmatches">
+      {{ render_chips(chips) }}
+      {% if other_reasons %}
+      <div class="why">
+        <div class="why-h">Also flagged by</div>
+        {% for reason in other_reasons %}<div class="reason">{{ reason }}</div>{% endfor %}
       </div>
-      {% if trade_url %}<a class="trade-link" href="{{ trade_url }}" target="_blank" rel="noopener"
-        title="Open this item's base + every affix as a restrictive search on the official trade site, then ease filters there to find comparables">Open on trade site ↗</a>{% endif %}
+      {% endif %}
+      {% if not reasons %}<div class="muted">Not flagged by current rules.</div>{% endif %}
     </div>
-    <div class="price-box" data-hash="{{ hash }}">
-      <button type="button" class="price-btn">Price check</button>
-      <div class="price-out muted">…</div>
-    </div>
+    {# details: stash · listed · price · trade link #}
+    {{ details_block(hash, stash_tab, listed_at, price, trade_url) }}
   </div>
 </div>
 

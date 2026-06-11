@@ -33,16 +33,45 @@ def _stat_filters(item: dict) -> list[dict]:
     return out
 
 
+# Max affixes per prefix/suffix group, by rarity (rare = 3 prefix + 3 suffix, magic = 1 + 1).
+_MAX_AFFIX = {"rare": 3, "magic": 1}
+
+
+def _empty_affix_slots(item: dict, rarity: str) -> tuple[int, int]:
+    """``(empty_prefix, empty_suffix)`` = the rarity cap minus the item's prefix/suffix counts.
+
+    Each ``extended.mods.explicit`` entry's ``tier`` encodes the kind in trade2 data — ``P*`` is
+    a prefix, ``S*`` a suffix (e.g. ``P5`` / ``S1``). Empty slots are craftable headroom a buyer
+    values, so a 3-prefix / 1-suffix rare has 2 empty suffix slots."""
+    cap = _MAX_AFFIX.get(rarity, 0)
+    if not cap:
+        return 0, 0
+    emods = ((item.get("extended") or {}).get("mods") or {}).get("explicit") or []
+    prefixes = sum(1 for m in emods if str(m.get("tier", "")).startswith("P"))
+    suffixes = sum(1 for m in emods if str(m.get("tier", "")).startswith("S"))
+    return max(0, cap - prefixes), max(0, cap - suffixes)
+
+
 def build_trade_url(item: dict, *, league: str, base_url: str, realm: str,
                     status: str = "any") -> str | None:
-    """A ``pathofexile.com/trade2`` search URL prefilled with this item's base + affixes, or
-    None if there's nothing to anchor on. The search is account-free (market-wide)."""
+    """A ``pathofexile.com/trade2`` search URL prefilled with this item's base + affixes (+ any
+    empty prefix/suffix slots), or None if there's nothing to anchor on. Account-free."""
     rarity = (itemdata.rarity(item) or "").lower()
     base = itemdata.base_type(item) or None
     stat_filters = _stat_filters(item)
+
+    # Empty affix slots are craftable headroom — require the comparable to have at least as many
+    # open prefix/suffix slots (pseudo stats). E.g. a 3-prefix/1-suffix rare adds "empty suffix
+    # >= 2". The user can ease these on the site.
+    ids = pseudo.empty_slot_ids()
+    empty_prefix, empty_suffix = _empty_affix_slots(item, rarity)
+    if empty_prefix and ids.get("prefix"):
+        stat_filters.append({"id": ids["prefix"], "value": {"min": empty_prefix}, "disabled": False})
+    if empty_suffix and ids.get("suffix"):
+        stat_filters.append({"id": ids["suffix"], "value": {"min": empty_suffix}, "disabled": False})
+
     if not base and not stat_filters:
         return None
-
     extra: dict = {}
     if rarity in ("normal", "magic", "rare", "unique"):
         extra["type_filters"] = {"filters": {"rarity": {"option": rarity}}}

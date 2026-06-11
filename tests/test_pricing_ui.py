@@ -77,13 +77,49 @@ def test_price_data_ready_after_harvest():
         stasher.close()
 
 
-def test_detail_card_shows_stash_tab_and_trade_link():
+def test_detail_card_shows_blocks_stash_price_and_trade_link():
     stasher, app = _app()
     try:
         _insert_item(stasher)
         body = app.test_client().get("/records/abc/card").get_data(as_text=True)
-        assert "Stash tab" in body and "Quad Tab 3" in body
-        assert "Open on trade site" in body and "/trade2/search/poe2/" in body
+        # details block: stash tab + a (state-driven) price line + trade link
+        assert "Stash" in body and "Quad Tab 3" in body
+        assert 'class="price-line"' in body and "not checked" in body  # unpriced item
+        # trade link is now a ↗ icon next to the price, linking to the prefilled search
+        assert "/trade2/search/poe2/" in body and "pl-icon trade-link" in body
+    finally:
+        stasher.close()
+
+
+def test_detail_card_renders_cached_price():
+    stasher, app = _app()
+    try:
+        _insert_item(stasher)
+        sig = "sigX"
+        stasher.store.cache_price(sig, strategy="magic_base", rarity="Magic", base="Iron Ring",
+                                  league="Std", filters=[],
+                                  estimate={"value": 12, "currency": "divine", "confidence": 0.64,
+                                            "is_floor": False, "n_samples": 8,
+                                            "sampled_at": "2026-06-11T00:00:00+00:00"})
+        stasher.store.set_item_price("abc", sig)
+        body = app.test_client().get("/records/abc/card").get_data(as_text=True)
+        assert "12 divine" in body and "64%" in body
+        assert "checked" in body and "2026-06-11T00:00:00+00:00" in body  # "checked Nh ago"
+    finally:
+        stasher.close()
+
+
+def test_queue_card_renders_panel_blocks():
+    from types import SimpleNamespace
+    stasher, app = _app()
+    try:
+        _insert_item(stasher)
+        stasher.store.upsert_evaluation(
+            "abc", SimpleNamespace(flagged=True, reasons=["hit"], results=[], score=0.5), "rh")
+        body = app.test_client().get("/queue").get_data(as_text=True)
+        # the shared details block (price line) + the collapsible note + actions all render
+        assert 'class="price-line"' in body and "Quad Tab 3" in body
+        assert "note-toggle" in body and "Mark seen" in body
     finally:
         stasher.close()
 

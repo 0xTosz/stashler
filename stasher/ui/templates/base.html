@@ -194,15 +194,31 @@
       padding: 8px 12px; margin: 0 0 14px; color: #e0c074; }
     .stale-banner button { border-color: #6e5a34; }
 
-    /* on-demand price check (detail card) */
-    .price-box { margin-top: 10px; padding-top: 8px; border-top: 1px solid #2a2f37; }
-    .price-box .price-btn { font-size: 12px; padding: 3px 9px; }
-    .price-out { margin-top: 6px; font-size: 13px; }
-    .price-out strong { color: #e0c074; }
-    .price-notes { margin-top: 2px; font-size: 11px; }
-    .trade-link { display: inline-block; margin-top: 4px; font-size: 12px; color: #8ab6ff;
-      text-decoration: none; }
-    .trade-link:hover { text-decoration: underline; }
+    /* right-panel blocks (queue card + detail popup): matches / details / actions */
+    .qside { gap: 0; }                       /* blocks provide rhythm via padding + dividers */
+    .qside > .qblock { padding: 7px 0; }
+    .qside > .qblock + .qblock { border-top: 1px solid #23272e; }
+    .qside > .qmatches { padding-top: 0; }
+    .qmeta-line { font-size: 12px; line-height: 1.5; }
+    .qmeta-line .val { color: #fff; }
+    /* price line: "Price  ~12 div · 64%   [↻]" + a muted "checked Nh ago" under it */
+    .price-line { margin-top: 5px; font-size: 13px; }
+    .price-line .pl-row { display: flex; align-items: center; gap: 8px; }
+    .price-line .pl-k { color: #9aa1ab; }
+    .price-line .pl-v { color: #e0c074; }
+    .price-line .pl-v.muted { color: #8b929c; }
+    .price-line .pl-actions { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+    .price-line .pl-icon { font-size: 12px; line-height: 1.2; padding: 2px 8px; text-decoration: none; }
+    a.pl-icon { display: inline-flex; align-items: center; background: #2a2f37; color: #8ab6ff;
+      border: 1px solid #3a414b; border-radius: 5px; }
+    a.pl-icon:hover { background: #343b45; }
+    .price-line .pl-age { font-size: 11px; margin-top: 1px; }
+    /* actions block */
+    .qactions .qbtn-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .qactions button { font-size: 12px; padding: 3px 9px; }
+    .note-toggle { display: block; background: none; border: none; color: #9aa1ab;
+      font-size: 12px; cursor: pointer; padding: 0; margin-top: 9px; text-align: left; }
+    .note-toggle.has-note { color: #8ab6ff; }
   </style>
 </head>
 <body>
@@ -320,78 +336,74 @@
           .forEach(row => { row.style.display = noslot.checked ? '' : 'none'; });
         noslot.onchange = apply; apply();
       }
-      const pbox = root.querySelector('.price-box');
-      if (pbox) wirePriceBox(pbox);
+      root.querySelectorAll('.price-line').forEach(wirePriceLine);
     }
     window.wireDetailCard = wireDetailCard;
 
-    // --- on-demand price check (the pricing module) -------------------------------------
-    // Cache-only on open; a "Price check" enqueues a background, rate-limited search and the
-    // box polls until the fresh estimate lands. Refused (with a reason) until the Phase-0
-    // stat data is harvested — see PRICING_MODULE_PLAN.md.
+    // --- on-demand price line (shared by queue cards + the detail popup) -----------------
+    // The cached estimate is rendered server-side; the Check/↻ button enqueues a background,
+    // rate-limited search, and the page's status poll (applyPricingStatus) flips this line to
+    // queued/pricing and re-reads the value when it lands. Refused until the Phase-0 stat data
+    // is harvested — see PRICING_MODULE_PLAN.md.
     const fmtNum = n => (Math.round((+n) * 100) / 100).toString();
-    function renderEstimate(out, res) {
-      if (!res || res.status === 'miss' || !res.estimate) {
-        out.innerHTML = '<span class="muted">No price yet.</span>'; return;
+    function renderPriceLine(line, res) {
+      const v = line.querySelector('.pl-v'), btn = line.querySelector('.pl-btn');
+      const e = res && res.estimate;
+      if (e && !(e.is_floor && (e.n_samples || 0) === 0)) {
+        const floor = e.is_floor ? '≥ ' : '';
+        const conf = e.is_floor ? '' : ' · ' + Math.round((e.confidence || 0) * 100) + '%';
+        v.textContent = floor + fmtNum(e.value) + ' ' + e.currency + conf;
+        v.className = 'pl-v';
+      } else if (e && e.is_floor) {
+        v.textContent = 'too thin to price'; v.className = 'pl-v muted';
+      } else {
+        v.textContent = 'not checked'; v.className = 'pl-v muted';
       }
-      const e = res.estimate;
-      if (e.is_floor && (e.n_samples || 0) === 0) {
-        out.innerHTML = '<span class="muted">Too thin to price — rarer than current listings.</span>';
-        return;
+      btn.textContent = '↻'; btn.disabled = false;   // always the refresh icon
+      const age = line.querySelector('.pl-age');
+      if (age) {
+        if (e && e.sampled_at) {
+          age.innerHTML = 'checked <span class="ts" data-ts="' + e.sampled_at + '"></span>';
+          age.hidden = false; formatTimes(age);
+        } else { age.hidden = true; age.innerHTML = ''; }
       }
-      const conf = Math.round((e.confidence || 0) * 100);
-      const band = (e.low != null && e.high > 0)
-        ? ` <span class="muted">(${fmtNum(e.low)}–${fmtNum(e.high)})</span>` : '';
-      const floor = e.is_floor ? '≥ ' : '';
-      const age = res.age_hours != null
-        ? ` · ${res.age_hours < 1 ? '<1h' : Math.round(res.age_hours) + 'h'} ago` : '';
-      const tag = res.status === 'similar' ? ' <span class="muted">· similar item</span>'
-        : (res.status === 'stale' ? ' <span class="muted">· stale</span>' : '');
-      out.innerHTML = `<strong>${floor}${fmtNum(e.value)} ${e.currency}</strong>${band}`
-        + ` <span class="muted">· ${conf}% conf${age}</span>${tag}`
-        + (e.notes && e.notes.length ? `<div class="muted price-notes">${e.notes.join(' ')}</div>` : '');
     }
-    async function priceLookup(hash) {
-      try { return await (await fetch('/api/price/' + encodeURIComponent(hash))).json(); }
-      catch (e) { return null; }
+    async function refreshPriceLine(line) {
+      try {
+        renderPriceLine(line, await (await fetch('/api/price/' + encodeURIComponent(line.dataset.hash))).json());
+      } catch (e) {}
     }
-    function wirePriceBox(box) {
-      const hash = box.dataset.hash, btn = box.querySelector('.price-btn'),
-            out = box.querySelector('.price-out');
-      let canRefresh = false, reason = '';
-      async function load() {
-        const res = await priceLookup(hash);
-        if (!res) { out.innerHTML = '<span class="muted">—</span>'; return; }
-        canRefresh = res.can_refresh; reason = res.refresh_reason;
-        renderEstimate(out, res);
-        btn.textContent = (res.estimate ? 'Refresh price' : 'Price check');
-        btn.disabled = false;
-      }
+    function wirePriceLine(line) {
+      const btn = line.querySelector('.pl-btn');
       btn.onclick = async () => {
-        if (!canRefresh) { out.innerHTML = `<span class="muted">${reason || 'Pricing unavailable.'}</span>`; return; }
-        btn.disabled = true;
-        out.innerHTML = '<span class="muted">Queued… pricing in the background.</span>';
-        try { await fetch('/api/price/' + encodeURIComponent(hash), {method: 'POST'}); } catch (e) {}
-        let tries = 0;
-        const iv = setInterval(async () => {
-          tries++;
-          const res = await priceLookup(hash);
-          const pr = (res && res.pricing) || {};
-          const busy = (pr.queued || 0) > 0 || pr.in_progress;
-          if (res && res.status === 'fresh' && res.estimate) {
-            renderEstimate(out, res); btn.disabled = false; btn.textContent = 'Refresh price';
-            clearInterval(iv); return;
-          }
-          if (!busy || tries > 20) {
-            if (res) renderEstimate(out, res);
-            btn.disabled = false; clearInterval(iv); return;
-          }
-          out.innerHTML = `<span class="muted">Pricing… (${pr.queued || 0} queued)</span>`;
-        }, 2000);
+        const v = line.querySelector('.pl-v');
+        // Check readiness (Phase-0 interlock) before showing "queued".
+        let res = null;
+        try { res = await (await fetch('/api/price/' + encodeURIComponent(line.dataset.hash))).json(); } catch (e) {}
+        if (res && res.can_refresh === false) {
+          v.textContent = res.refresh_reason || 'pricing unavailable'; v.className = 'pl-v muted'; return;
+        }
+        btn.disabled = true; line.dataset.busy = '1';
+        v.textContent = '⋯ queued…'; v.className = 'pl-v muted';
+        try { await fetch('/api/price/' + encodeURIComponent(line.dataset.hash), {method: 'POST'}); }
+        catch (e) { btn.disabled = false; line.dataset.busy = ''; }
       };
-      load();
     }
-    window.wirePriceBox = wirePriceBox;
+    window.wirePriceLine = wirePriceLine;
+    // Reflect background pricing on whichever cards are in flight; refresh the value on finish.
+    function applyPricingStatus(pr) {
+      const inProg = pr.in_progress, queued = new Set(pr.queued_hashes || []);
+      document.querySelectorAll('.price-line').forEach(line => {
+        const h = line.dataset.hash, v = line.querySelector('.pl-v'), btn = line.querySelector('.pl-btn');
+        if (h === inProg) {
+          v.textContent = '⟳ pricing…'; v.className = 'pl-v muted'; btn.disabled = true; line.dataset.busy = '1';
+        } else if (queued.has(h)) {
+          v.textContent = '⋯ queued…'; v.className = 'pl-v muted'; btn.disabled = true; line.dataset.busy = '1';
+        } else if (line.dataset.busy === '1') {
+          line.dataset.busy = ''; refreshPriceLine(line);   // just finished → pull the value
+        }
+      });
+    }
 
     function bucket(b) {
       const pct = b.max_hits ? Math.min(100, 100 * b.used / b.max_hits) : 0;
@@ -461,6 +473,7 @@
         pe.textContent = busy ? ('pricing ' + busy + ' item' + (busy === 1 ? '' : 's') + '…') : '';
         pe.style.display = busy ? '' : 'none';
       }
+      applyPricingStatus(pr);   // flip per-card price lines that are queued / in flight
 
       let html = '';
       for (const [policy, buckets] of Object.entries(s.rate_limits || {})) {
@@ -474,6 +487,7 @@
          ${q.http_code || ''} ${q.detail ? '· ' + q.detail : ''}</div>`).join('');
     }
     formatTimes();          // server-rendered timestamps (queue, etc.)
+    document.querySelectorAll('.price-line').forEach(wirePriceLine);  // queue/records cards
     refresh();
     setInterval(() => { refresh(); formatTimes(); }, 1500);  // keep "ago" times fresh
   </script>

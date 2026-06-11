@@ -1,0 +1,40 @@
+{# Shared right-panel building blocks, reused by the queue list card AND the detail card
+   (_detail_card.html → records page + queue popup). The panel is organised into purpose
+   blocks (matches / details / actions); these macros render the DETAILS block pieces.
+
+   price_line is state-driven: it renders the cached estimate server-side (no API call); the
+   page's status poll then flips it to queued/pricing and back (see wirePriceLine /
+   applyPricingStatus in base.html). The small button runs the first check or a re-check. #}
+
+{% macro price_line(hash, price=None, trade_url=None) %}
+<div class="price-line" data-hash="{{ hash }}">
+  <div class="pl-row">
+    <span class="pl-k">Price</span>
+    {%- if price and not (price.is_floor and (price.n_samples or 0) == 0) %}
+    <span class="pl-v">{{ '≥ ' if price.is_floor }}{{ '%g'|format(price.value) }} {{ price.currency }}
+      {%- if not price.is_floor %} · {{ (price.confidence * 100)|round|int }}%{% endif %}</span>
+    {%- elif price and price.is_floor %}
+    <span class="pl-v muted">too thin to price</span>
+    {%- else %}
+    <span class="pl-v muted">not checked</span>
+    {%- endif %}
+    <span class="pl-actions">
+      {%- if trade_url %}<a class="pl-icon trade-link" href="{{ trade_url }}" target="_blank" rel="noopener"
+        title="Open on the official trade site — base + every affix + empty affix slots, restrictive so you can ease filters there">↗</a>{% endif %}
+      <button type="button" class="pl-icon pl-btn" title="Check / refresh price" aria-label="Check / refresh price">↻</button>
+    </span>
+  </div>
+  <div class="pl-age muted"{% if not (price and price.sampled_at) %} hidden{% endif %}>
+    {%- if price and price.sampled_at %}checked <span class="ts" data-ts="{{ price.sampled_at }}"></span>{% endif %}</div>
+</div>
+{% endmacro %}
+
+{% macro details_block(hash, stash_tab=None, listed_at=None, price=None, trade_url=None) %}
+<div class="qblock qdetails">
+  <div class="qmeta-line">Stash:
+    {%- if stash_tab %} <span class="val">{{ stash_tab }}</span>{% else %} <span class="muted">—</span>{% endif %}
+    {%- if listed_at %} <span class="muted">· listed <span class="ts" data-ts="{{ listed_at }}"></span></span>{% endif %}
+  </div>
+  {{ price_line(hash, price, trade_url) }}
+</div>
+{% endmacro %}

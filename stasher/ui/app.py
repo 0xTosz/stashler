@@ -269,7 +269,9 @@ def create_app(stasher) -> Flask:
         # detail comes from explain_score's structured breakdown (tabs).
         other_reasons = [r.get("explanation", "") for r in results
                          if r.get("checker") != "archetype_set"]
-        stash_tab = ((entry.get("listing") or {}).get("stash") or {}).get("name")
+        listing = entry.get("listing") or {}
+        stash_tab = (listing.get("stash") or {}).get("name")
+        listed_at = listing.get("indexed")
         # "Open on trade site" link: base + all affixes at slightly-relaxed floors. No API call
         # (uses the site's ?q= state param). Deliberately broad status (build_trade_url's "any"
         # default) so the user sees the whole market to verify against — not the app's capture
@@ -282,7 +284,8 @@ def create_app(stasher) -> Flask:
             chips=_checker_chips(results, row["score"]),
             other_reasons=other_reasons,
             score_breakdown=stasher.evaluator.explain_score(item),
-            hash=item_hash, stash_tab=stash_tab, trade_url=trade_url,
+            hash=item_hash, stash_tab=stash_tab, listed_at=listed_at, trade_url=trade_url,
+            price=(store.get_item_price(item_hash) or {}).get("estimate"),
         )
 
     @app.route("/api/rules/<arch_id>/enabled", methods=["POST"])
@@ -330,6 +333,7 @@ def create_app(stasher) -> Flask:
                 d["card"] = None
                 d["stash_tab"] = None
                 d["stash_regex"] = ""
+            d["price"] = (store.get_item_price(r["hash"]) or {}).get("estimate")  # cached, no API
             items.append(d)
         return render_template(
             "queue.html",
