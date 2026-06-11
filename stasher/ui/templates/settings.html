@@ -147,9 +147,9 @@
   <p class="muted" style="margin:6px 0 10px;">When enabled (the
     <em>Auto-price</em> button in the header, next to Auto-refresh), newly captured items are
     price-checked automatically if their <em>current</em> (as-is) or <em>crafting</em> score
-    crosses its threshold. New captures skip items with a fresh cached price; a
-    <em>Re-evaluate archive</em> pass also enqueues qualifying items, but only those with no
-    price data at all (anything cached — even stale — counts as data).
+    crosses its threshold and the item has <em>no price data yet</em> (anything cached — even
+    stale or similar — counts as data). One rule for every evaluation path: capture,
+    Re-evaluate archive, and set-upgrade refreshes.
     Currently: <span class="{{ 'ok' if auto_price.enabled else 'muted' }}">
       {{ 'on' if auto_price.enabled else 'off' }}</span></p>
   <form method="post" action="{{ url_for('settings_autoprice') }}"

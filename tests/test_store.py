@@ -144,6 +144,32 @@ def test_queue_dual_score_sorts_and_min_filter(tmp_path):
     store.close()
 
 
+def test_queue_sort_by_cached_price(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+
+    def add(h, price=None, currency="exalted"):
+        store.insert_item(make_record(h=h, name=h))
+        store.upsert_evaluation(h, types.SimpleNamespace(flagged=True, reasons=["r"]), "rh")
+        if price is not None:
+            store.cache_price(f"sig-{h}", strategy="rare_finished", rarity="Rare", base=None,
+                              league="Std", filters=[],
+                              estimate={"value": price, "currency": currency,
+                                        "is_floor": False, "n_samples": 8})
+            store.set_item_price(h, f"sig-{h}")
+
+    add("cheap", price=3)
+    add("divine", price=2, currency="divine")     # 2 div ≫ 3 ex after normalization
+    add("unpriced")
+    add("alien", price=50, currency="mirror_shard")   # unknown currency -> sorts with unpriced
+
+    order = [r["hash"] for r in store.queue_items(sort="price")]
+    assert order[:2] == ["divine", "cheap"]           # base-unit normalized, not raw numbers
+    assert set(order[2:]) == {"unpriced", "alien"}    # no usable price -> bottom
+    store.close()
+
+
 def test_queue_per_checker_filters_and_sorts(tmp_path):
     import types
 

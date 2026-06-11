@@ -30,6 +30,9 @@
   <a href="{{ url_for('queue', all=all_arg, sort='craft', **qargs) }}"
      class="{{ 'sort-on' if sort == 'craft' else 'muted' }}"
      title="Risk-discounted value of finishing the item (crafting potential)">best craft ⚒</a>
+  <a href="{{ url_for('queue', all=all_arg, sort='price', **qargs) }}"
+     class="{{ 'sort-on' if sort == 'price' else 'muted' }}"
+     title="Cached market price (base-unit normalized); unpriced items sink to the bottom">highest price</a>
   <a href="{{ url_for('queue', all=all_arg, sort='checkers', **qargs) }}"
      class="{{ 'sort-on' if sort == 'checkers' else 'muted' }}">most checkers</a>
   <a href="{{ url_for('queue', all=all_arg, sort='ruleset', **qargs) }}"

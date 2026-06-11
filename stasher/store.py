@@ -22,6 +22,23 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _estimate_base_value(estimate: dict | None) -> float | None:
+    """A price estimate's value in the base unit (exalted), for SQL sorting — None when
+    the currency is unknown to the rate table or the estimate is an unusable zero-floor."""
+    if not estimate:
+        return None
+    try:
+        value = float(estimate.get("value") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    from .pricing.price import load_rates  # local import: keep store free of pricing at import time
+
+    rate = load_rates().get(estimate.get("currency"))
+    return value * rate if rate is not None else None
+
+
 @dataclass
 class ItemRecord:
     hash: str
@@ -174,6 +191,18 @@ class Store:
             self._conn.execute("ALTER TABLE evaluations ADD COLUMN score_potential REAL")
         if "score_driver" not in cols:
             self._conn.execute("ALTER TABLE evaluations ADD COLUMN score_driver TEXT")
+        # Cached price normalized to the base unit (exalted) for SQL sorting (the queue's
+        # "highest price" sort). NULL = unknown currency / unusable floor; backfilled once.
+        pc_cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(price_cache)")}
+        if "value_base" not in pc_cols:
+            self._conn.execute("ALTER TABLE price_cache ADD COLUMN value_base REAL")
+            for row in self._conn.execute("SELECT plan_sig, estimate FROM price_cache").fetchall():
+                try:
+                    vb = _estimate_base_value(json.loads(row["estimate"]))
+                except (ValueError, TypeError):
+                    vb = None
+                self._conn.execute("UPDATE price_cache SET value_base = ? WHERE plan_sig = ?",
+                                   (vb, row["plan_sig"]))
 
     def close(self) -> None:
         with self._lock:
@@ -414,19 +443,22 @@ class Store:
             "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
             "i.price_currency, i.price_type, i.whisper, i.listed_at, i.fetched_at, "
             "i.raw_json, e.reasons, e.results, e.score, e.checker_count, e.ruleset_matches, "
-            "e.score_now, e.score_potential, e.score_driver, "
+            "e.score_now, e.score_potential, e.score_driver, pc.value_base AS price_base, "
             "e.flagged, e.seen, e.seen_at, e.evaluated_at "
-            "FROM evaluations e JOIN items i ON i.hash = e.hash"
+            "FROM evaluations e JOIN items i ON i.hash = e.hash "
+            "LEFT JOIN price_item pi ON pi.item_hash = e.hash "
+            "LEFT JOIN price_cache pc ON pc.plan_sig = pi.plan_sig"
         )
         where, params = self._queue_filter(show_all, rarities, checkers, score_by, score_min)
         sql += where
         # Seen items always sink to the bottom; within that, by score (overall / as-is /
-        # craft potential), checker/ruleset match count, or recency.
+        # craft potential), cached price, checker/ruleset match count, or recency.
         primary = {
             "matches": "json_array_length(COALESCE(e.reasons, '[]')) DESC",
             "score": "(e.score IS NULL) ASC, e.score DESC",
             "now": "(e.score_now IS NULL) ASC, e.score_now DESC",
             "craft": "(e.score_potential IS NULL) ASC, e.score_potential DESC",
+            "price": "(pc.value_base IS NULL) ASC, pc.value_base DESC",
             "checkers": "COALESCE(e.checker_count, 0) DESC",
             "ruleset": "COALESCE(e.ruleset_matches, 0) DESC",
         }.get(sort, "e.evaluated_at DESC")
@@ -582,18 +614,21 @@ class Store:
             self._conn.execute(
                 """
                 INSERT INTO price_cache
-                    (plan_sig, strategy, rarity, base, league, filters, estimate, sampled_at)
-                VALUES (?,?,?,?,?,?,?,?)
+                    (plan_sig, strategy, rarity, base, league, filters, estimate, sampled_at,
+                     value_base)
+                VALUES (?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(plan_sig) DO UPDATE SET
                     strategy=excluded.strategy, rarity=excluded.rarity, base=excluded.base,
                     league=excluded.league, filters=excluded.filters,
-                    estimate=excluded.estimate, sampled_at=excluded.sampled_at
+                    estimate=excluded.estimate, sampled_at=excluded.sampled_at,
+                    value_base=excluded.value_base
                 """,
                 (
                     plan_sig, strategy, rarity, base, league,
                     json.dumps(filters, separators=(",", ":")),
                     json.dumps(estimate, separators=(",", ":")),
                     utc_now_iso(),
+                    _estimate_base_value(estimate),
                 ),
             )
             self._conn.commit()

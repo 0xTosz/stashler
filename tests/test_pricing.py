@@ -409,7 +409,8 @@ def test_trade_url_single_res_stays_exact():
 
 def test_auto_price_thresholds_and_toggle(tmp_path):
     """Auto price checks: off by default; either threshold (current OR craft) queues a
-    check; a 0 threshold disables that basis; a fresh cached estimate is never re-spent."""
+    check; a 0 threshold disables that basis; ANY existing price data (fresh, stale, or
+    fuzzy-similar) skips — automation only spends budget on genuine gaps."""
     import types
 
     from stasher.pricing.appraise import PricingService
@@ -437,19 +438,38 @@ def test_auto_price_thresholds_and_toggle(tmp_path):
     store.set_setting("auto_price_min_now", "0.4")
     assert svc.maybe_auto_request("h4", item, ev) is True                 # now basis crosses
 
-    svc.lookup = lambda i: {"status": "fresh", "estimate": {}}            # already priced
-    assert svc.maybe_auto_request("h5", item, ev) is False
-    assert calls == ["h", "h4"]
-
-    # bulk re-evaluation path (require_unpriced): anything short of a complete cache
-    # miss counts as "has price data" — stale and similar estimates are skipped too.
+    # any price data at all (even stale/similar) skips — one rule for every eval path
     for status in ("fresh", "stale", "similar"):
         svc.lookup = lambda i, s=status: {"status": s, "estimate": {}}
-        assert svc.maybe_auto_request("h6", item, ev, require_unpriced=True) is False
+        assert svc.maybe_auto_request("h5", item, ev) is False
     svc.lookup = lambda i: {"status": "miss"}
-    assert svc.maybe_auto_request("h6", item, ev, require_unpriced=True) is True
+    assert svc.maybe_auto_request("h6", item, ev) is True
     assert calls == ["h", "h4", "h6"]
     store.close()
+
+
+def test_evaluator_hook_fires_on_every_eval_path(tmp_path):
+    """evaluate_entry AND reevaluate_all both fire on_evaluated (the auto-price seam)."""
+    import types
+
+    import stasher as S
+    from stasher.config import Config
+
+    cfg = Config.load(None, data_dir=str(tmp_path), db_path=str(tmp_path / "t.db"))
+    st = S.Stasher(cfg)
+    seen = []
+    st.evaluator.on_evaluated = lambda h, item, ev: seen.append(h)
+    entry = {"id": "abc", "listing": {}, "item": {"frameType": 2, "baseType": "Vaal Regalia"}}
+    from stasher.store import ItemRecord
+    st.store.insert_item(ItemRecord(hash="abc", account="me", listed_at=None,
+        price_amount=None, price_currency=None, price_type=None, item_name=None,
+        type_line="Vaal Regalia", rarity="Rare", whisper=None, league="Std",
+        raw_json=json.dumps(entry)))
+    st.evaluator.evaluate_entry(entry)
+    assert seen == ["abc"]
+    st.reevaluate_all(force=True)
+    assert seen == ["abc", "abc"]
+    st.close()
 
 
 # --- pseudo aggregation on the real harvested ids ----------------------

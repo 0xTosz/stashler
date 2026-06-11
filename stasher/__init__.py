@@ -49,23 +49,21 @@ class Stasher:
         set_change = install_archetype_set(config.rules_path, config.data_dir, self.store)
         self.evaluator = Evaluator(self.store, config.rules_path, config.data_dir)
 
-        def _auto_price(item_hash: str, item: dict, evaluation, *,
-                        require_unpriced: bool = False) -> None:
-            """Auto price check for evaluated items crossing the configured score
-            thresholds (off by default; toggled next to Auto-refresh). Best-effort —
-            never lets pricing problems interfere with capture/evaluation."""
+        def _auto_price(item_hash: str, item: dict, evaluation) -> None:
+            """Auto price check fired by EVERY evaluation path (capture, re-evaluation,
+            upgrade refresh): enqueue when a score threshold is crossed and the item has
+            no price data yet. Off by default (toggled next to Auto-refresh); best-effort
+            — never lets pricing problems interfere with capture/evaluation."""
             try:
                 from .pricing.appraise import AUTO_PRICE_ENABLED_KEY
                 if self.store.get_setting(AUTO_PRICE_ENABLED_KEY, "0") != "1":
                     return  # off (the default): don't even build the pricing service
-                self.pricing().maybe_auto_request(item_hash, item, evaluation,
-                                                  require_unpriced=require_unpriced)
+                self.pricing().maybe_auto_request(item_hash, item, evaluation)
             except Exception:  # noqa: BLE001
                 pass
 
-        self._auto_price = _auto_price
-        self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator,
-                                 on_evaluated=_auto_price)
+        self.evaluator.on_evaluated = _auto_price
+        self.pipeline = Pipeline(self.client, self.store, evaluator=self.evaluator)
         self._worker: Worker | None = None
         self._pricing = None
         # A set upgrade changes the rules hash, so the stored archive is now stale. Refresh it in
@@ -123,14 +121,10 @@ class Stasher:
         progress: Callable[[int, int], None] | None = None,
         force: bool = False,
     ) -> dict:
-        """Re-run the rule checkers over stored items. Returns a summary dict.
-
-        With auto-pricing enabled, items whose re-evaluated current/crafting score
-        crosses its threshold AND that have no price data yet (a complete cache miss —
-        stale/similar estimates count as data) are enqueued for a price check."""
-        return self.evaluator.reevaluate_all(
-            progress, force,
-            on_evaluated=lambda h, i, e: self._auto_price(h, i, e, require_unpriced=True))
+        """Re-run the rule checkers over stored items. Returns a summary dict. Like every
+        evaluation path, items crossing an auto-price threshold with no price data yet
+        are enqueued for a check (when auto-pricing is on)."""
+        return self.evaluator.reevaluate_all(progress, force)
 
     def worker(self) -> Worker:
         if self._worker is None:

@@ -312,8 +312,8 @@ def create_app(stasher) -> Flask:
     def queue():
         show_all = request.args.get("all") == "1"
         sort = request.args.get("sort")
-        sort = sort if sort in ("matches", "score", "now", "craft", "checkers", "ruleset") \
-            else "recent"
+        sort = sort if sort in ("matches", "score", "now", "craft", "price",
+                                "checkers", "ruleset") else "recent"
         page = max(1, request.args.get("page", 1, type=int))
         rarities = [r for r in request.args.getlist("rarity") if r]
         checkers = [c for c in request.args.getlist("checker") if c in CHECKERS]
