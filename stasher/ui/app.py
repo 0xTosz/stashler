@@ -63,6 +63,13 @@ def _checker_chips(results: list[dict], score: float | None) -> list[dict]:
                 chip["score"] = score
                 # Chip keeps its checker color (identity); only the score segment is tier-tinted.
                 chip["tier_color"] = TIER_COLORS.get(chip["tier"], meta["color"])
+            # The now/potential split rides on the headline result — rendered as a second
+            # segment ("now 0.45 · ⚒ 0.78") with the driving side highlighted.
+            extra = (headline or {}).get("extra") or {}
+            if extra.get("now") is not None:
+                chip["now"] = extra["now"]
+                chip["potential"] = extra.get("potential", extra["now"])
+                chip["driver"] = extra.get("driver", "now")
         else:
             chip["count"] = len(hits)
             chip["text"] = f"{len(hits)} match" + ("" if len(hits) == 1 else "es")
@@ -299,17 +306,24 @@ def create_app(stasher) -> Flask:
     def queue():
         show_all = request.args.get("all") == "1"
         sort = request.args.get("sort")
-        sort = sort if sort in ("matches", "score", "checkers", "ruleset") else "recent"
+        sort = sort if sort in ("matches", "score", "now", "craft", "checkers", "ruleset") \
+            else "recent"
         page = max(1, request.args.get("page", 1, type=int))
         rarities = [r for r in request.args.getlist("rarity") if r]
         checkers = [c for c in request.args.getlist("checker") if c in CHECKERS]
+        # Optional min-score filter on a chosen basis (overall = the blended headline,
+        # now = as-is value, craft = crafting potential).
+        score_by = request.args.get("score_by")
+        score_by = score_by if score_by in store.SCORE_COLUMNS else "overall"
+        score_min = max(0.0, min(1.0, request.args.get("score_min", 0.0, type=float) or 0.0))
         cutoff_magic, cutoff_rare = store._score_cutoffs()
-        total = store.count_queue(show_all, rarities=rarities, checkers=checkers)
+        total = store.count_queue(show_all, rarities=rarities, checkers=checkers,
+                                  score_by=score_by, score_min=score_min)
         pages = max(1, math.ceil(total / PAGE_SIZE))
         page = min(page, pages)
         rows = store.queue_items(
             show_all, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE, sort=sort,
-            rarities=rarities, checkers=checkers,
+            rarities=rarities, checkers=checkers, score_by=score_by, score_min=score_min,
         )
         notes = store.feedback_notes()  # TEMP: local scoring-feedback notes, keyed by item hash
         items = []
@@ -344,6 +358,8 @@ def create_app(stasher) -> Flask:
             pages=pages,
             show_all=show_all,
             sort=sort,
+            score_by=score_by,
+            score_min=score_min,
             checkers_meta=CHECKERS,
             rarities_present=store.queue_rarities(show_all),
             active_rarities=rarities,

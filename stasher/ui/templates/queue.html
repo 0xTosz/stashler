@@ -8,23 +8,37 @@
   <button type="submit">Re-evaluate archive</button>
 </form>
 {% endif %}
+{# Common queue-link args (everything except `all`/`sort`) so every sort/toggle link
+   preserves the active filters: rarity/checker chips + the min-score filter + basis. #}
+{% set qargs = {'rarity': active_rarities, 'checker': active_checkers,
+                'score_by': score_by if score_min else None,
+                'score_min': score_min if score_min else None} %}
+{% set all_arg = 1 if show_all else None %}
+{% set sort_arg = sort if sort != 'recent' else None %}
 <div class="qbar">
   <strong>Review queue</strong>
   <span class="muted">{{ unseen }} unseen · {{ total }} {{ 'shown' if show_all else 'flagged' }}</span>
   <span class="muted" style="margin-left:6px">sort:</span>
-  <a href="{{ url_for('queue', all=1 if show_all else None, rarity=active_rarities, checker=active_checkers) }}"
+  <a href="{{ url_for('queue', all=all_arg, **qargs) }}"
      class="{{ 'sort-on' if sort == 'recent' else 'muted' }}">newest</a>
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort='score', rarity=active_rarities, checker=active_checkers) }}"
-     class="{{ 'sort-on' if sort == 'score' else 'muted' }}">best score</a>
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort='checkers', rarity=active_rarities, checker=active_checkers) }}"
+  <a href="{{ url_for('queue', all=all_arg, sort='score', **qargs) }}"
+     class="{{ 'sort-on' if sort == 'score' else 'muted' }}"
+     title="The blended headline score">best overall</a>
+  <a href="{{ url_for('queue', all=all_arg, sort='now', **qargs) }}"
+     class="{{ 'sort-on' if sort == 'now' else 'muted' }}"
+     title="What the item is worth untouched (as-is value)">best current</a>
+  <a href="{{ url_for('queue', all=all_arg, sort='craft', **qargs) }}"
+     class="{{ 'sort-on' if sort == 'craft' else 'muted' }}"
+     title="Risk-discounted value of finishing the item (crafting potential)">best craft ⚒</a>
+  <a href="{{ url_for('queue', all=all_arg, sort='checkers', **qargs) }}"
      class="{{ 'sort-on' if sort == 'checkers' else 'muted' }}">most checkers</a>
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort='ruleset', rarity=active_rarities, checker=active_checkers) }}"
+  <a href="{{ url_for('queue', all=all_arg, sort='ruleset', **qargs) }}"
      class="{{ 'sort-on' if sort == 'ruleset' else 'muted' }}">most ruleset matches</a>
   <span style="flex:1"></span>
   {% if show_all %}
-    <a href="{{ url_for('queue', sort=sort if sort != 'recent' else None, rarity=active_rarities, checker=active_checkers) }}">Hide below-threshold</a>
+    <a href="{{ url_for('queue', sort=sort_arg, **qargs) }}">Hide below-threshold</a>
   {% else %}
-    <a href="{{ url_for('queue', all=1, sort=sort if sort != 'recent' else None, rarity=active_rarities, checker=active_checkers) }}">Show all evaluated</a>
+    <a href="{{ url_for('queue', all=1, sort=sort_arg, **qargs) }}">Show all evaluated</a>
   {% endif %}
   <button id="btn-seen-all">Mark all seen</button>
 </div>
@@ -41,9 +55,20 @@
   <label class="chk"><input type="checkbox" name="checker" value="{{ name }}" {{ 'checked' if name in active_checkers }}>
     <span class="chip-dot" style="--chip:{{ meta.color }}"></span>{{ meta.label }}</label>
   {% endfor %}
+  <span class="muted" style="margin-left:12px"
+        title="Hide items below this score, judged on the chosen basis: overall = the blended headline, current = as-is value, craft = crafting potential">min score:</span>
+  <label class="chk">
+    <select name="score_by">
+      <option value="overall" {{ 'selected' if score_by == 'overall' }}>overall</option>
+      <option value="now" {{ 'selected' if score_by == 'now' }}>current</option>
+      <option value="craft" {{ 'selected' if score_by == 'craft' }}>craft ⚒</option>
+    </select>
+    <input type="number" name="score_min" min="0" max="1" step="0.05" style="width:64px"
+           value="{{ '%.2f'|format(score_min) if score_min else '' }}" placeholder="0">
+  </label>
   <button type="submit">Apply</button>
-  {% if active_rarities or active_checkers %}
-  <a href="{{ url_for('queue', all=1 if show_all else None, sort=sort if sort != 'recent' else None) }}">clear</a>
+  {% if active_rarities or active_checkers or score_min %}
+  <a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg) }}">clear</a>
   {% endif %}
 </form>
 
@@ -101,11 +126,10 @@
 {% endfor %}
 
 {% if pages > 1 %}
-{% set sort_arg = sort if sort != 'recent' else None %}
 <div class="qpages">
-  {% if page > 1 %}<a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg, page=page-1) }}">← Prev</a>{% endif %}
+  {% if page > 1 %}<a href="{{ url_for('queue', all=all_arg, sort=sort_arg, page=page-1, **qargs) }}">← Prev</a>{% endif %}
   <span class="muted">Page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="{{ url_for('queue', all=1 if show_all else None, sort=sort_arg, page=page+1) }}">Next →</a>{% endif %}
+  {% if page < pages %}<a href="{{ url_for('queue', all=all_arg, sort=sort_arg, page=page+1, **qargs) }}">Next →</a>{% endif %}
 </div>
 {% endif %}
 
@@ -132,6 +156,10 @@
   .qfilter { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0 10px;
     padding:7px 10px; border:1px solid #23272e; border-radius:6px; background:#14161a; }
   .qfilter .chk { display:inline-flex; align-items:center; gap:4px; font-size:13px; }
+  /* now/⚒ split segment on the Ruleset chip — driving side highlighted */
+  .chip-split { display:inline-flex; gap:6px; padding:0 6px; border-left:1px solid #2a2f37;
+    font-size:11px; align-items:center; }
+  .chip-split .split-on { color:#e8d28a; font-weight:600; }
   /* TEMP: per-item scoring feedback */
   .qfeedback { margin-top:6px; display:flex; flex-direction:column; gap:4px; }
   .qfeedback[hidden] { display:none; }   /* explicit `display` beats the [hidden] UA rule */

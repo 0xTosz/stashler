@@ -112,6 +112,38 @@ def test_queue_sort_by_match_count(tmp_path):
     store.close()
 
 
+def test_queue_dual_score_sorts_and_min_filter(tmp_path):
+    import types
+
+    store = Store(str(tmp_path / "t.db"))
+
+    def add(h, overall, now, craft):
+        store.insert_item(make_record(h=h, name=h))
+        store.upsert_evaluation(
+            h, types.SimpleNamespace(flagged=True, reasons=["r"], score=overall,
+                                     score_now=now, score_potential=craft,
+                                     driver="craft" if craft > now else "now"), "rh")
+
+    add("finished", 0.7, 0.70, 0.70)
+    add("craftbase", 0.6, 0.30, 0.85)
+    add("junk", 0.2, 0.20, 0.25)
+
+    assert [r["hash"] for r in store.queue_items(sort="score")][:2] == ["finished", "craftbase"]
+    assert [r["hash"] for r in store.queue_items(sort="now")][:2] == ["finished", "craftbase"]
+    assert [r["hash"] for r in store.queue_items(sort="craft")][:2] == ["craftbase", "finished"]
+
+    # min-score filter on each basis (the craft basis surfaces the craft base alone)
+    by_craft = store.queue_items(score_by="craft", score_min=0.8)
+    assert [r["hash"] for r in by_craft] == ["craftbase"]
+    by_now = store.queue_items(score_by="now", score_min=0.5)
+    assert [r["hash"] for r in by_now] == ["finished"]
+    assert store.count_queue(score_by="overall", score_min=0.5) == 2
+    # the split round-trips for the UI
+    row = next(r for r in store.queue_items() if r["hash"] == "craftbase")
+    assert (row["score_now"], row["score_potential"], row["score_driver"]) == (0.3, 0.85, "craft")
+    store.close()
+
+
 def test_queue_per_checker_filters_and_sorts(tmp_path):
     import types
 

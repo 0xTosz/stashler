@@ -19,17 +19,35 @@ from ..evaluate import itemdata
 from . import pseudo
 
 
+def _min_of(value: float) -> int | float:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
 def _stat_filters(item: dict) -> list[dict]:
-    """One stat filter per explicit affix at its tier floor (a slightly-relaxed min), using the
-    real ``extended`` stat ids."""
+    """Stat filters for the item's explicit affixes at slightly-relaxed floors, using the real
+    ``extended`` stat ids — with **fungible groups collapsed into pseudo totals** wherever a
+    pseudo covers ≥2 of the item's affixes (most prominently elemental resistances: fire +
+    cold + lightning become one ``pseudo_total_elemental_resistance ≥ sum`` filter, which is
+    far more robust on the site — listings satisfy it with ANY element mix instead of having
+    to match the exact lines). Singly-covered pseudos stay as their exact affix (tighter and
+    just as liquid). The consumed components are deduped out so nothing is double-required."""
     totals = pseudo.item_stat_totals(item)
     floors = pseudo.item_stat_floors(item)
     out: list[dict] = []
+    consumed: set[str] = set()
+    for ps in pseudo.pseudos_for(item):
+        if len([c for c in ps.components if c in totals]) < 2:
+            continue   # one underlying affix: the exact line is tighter and just as liquid
+        m = ps.floor or round(ps.value * 0.9, 2)
+        out.append({"id": ps.pseudo_id, "value": {"min": _min_of(m)}, "disabled": False})
+        consumed.update(ps.components)
     for sid, val in totals.items():
+        if sid in consumed:
+            continue
         m = floors.get(sid) or round(val * 0.9, 2)
-        if isinstance(m, float) and m.is_integer():
-            m = int(m)
-        out.append({"id": sid, "value": {"min": m}, "disabled": False})
+        out.append({"id": sid, "value": {"min": _min_of(m)}, "disabled": False})
     return out
 
 

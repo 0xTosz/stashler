@@ -166,6 +166,14 @@ class Store:
             self._conn.execute("ALTER TABLE evaluations ADD COLUMN checker_count INTEGER")
         if "ruleset_matches" not in cols:
             self._conn.execute("ALTER TABLE evaluations ADD COLUMN ruleset_matches INTEGER")
+        # The now/potential split (Design 2): as-is value vs risk-discounted craft value,
+        # NULL for pre-split evaluations (and for items without a graded result).
+        if "score_now" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN score_now REAL")
+        if "score_potential" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN score_potential REAL")
+        if "score_driver" not in cols:
+            self._conn.execute("ALTER TABLE evaluations ADD COLUMN score_driver TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -280,8 +288,9 @@ class Store:
                 """
                 INSERT INTO evaluations
                     (hash, flagged, seen, seen_at, reasons, score, rules_hash, evaluated_at,
-                     results, checkers, checker_count, ruleset_matches)
-                VALUES (?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+                     results, checkers, checker_count, ruleset_matches,
+                     score_now, score_potential, score_driver)
+                VALUES (?, ?, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET
                     flagged         = excluded.flagged,
                     reasons         = excluded.reasons,
@@ -291,7 +300,10 @@ class Store:
                     results         = excluded.results,
                     checkers        = excluded.checkers,
                     checker_count   = excluded.checker_count,
-                    ruleset_matches = excluded.ruleset_matches
+                    ruleset_matches = excluded.ruleset_matches,
+                    score_now       = excluded.score_now,
+                    score_potential = excluded.score_potential,
+                    score_driver    = excluded.score_driver
                 """,
                 (
                     item_hash,
@@ -304,6 +316,9 @@ class Store:
                     checkers_json,
                     len(checkers),
                     ruleset_matches,
+                    getattr(evaluation, "score_now", None),
+                    getattr(evaluation, "score_potential", None),
+                    getattr(evaluation, "driver", None),
                 ),
             )
             self._conn.commit()
@@ -338,9 +353,15 @@ class Store:
                 return 0.0
         return f(self.SCORE_CUTOFF_KEYS[0]), f(self.SCORE_CUTOFF_KEYS[1])
 
-    def _queue_filter(self, show_all, rarities, checkers) -> tuple[str, list]:
+    # Queue score bases: which evaluation column a min-score filter / score sort reads.
+    # "overall" = the blended headline; "now" = as-is value; "craft" = crafting potential.
+    SCORE_COLUMNS = {"overall": "e.score", "now": "e.score_now", "craft": "e.score_potential"}
+
+    def _queue_filter(self, show_all, rarities, checkers,
+                      score_by: str | None = None, score_min: float = 0.0) -> tuple[str, list]:
         """Shared WHERE clause for queue_items/count_queue: flagged gate + rarity IN (…) +
-        a checker membership test (item flagged by ANY of the given checkers — OR semantics).
+        a checker membership test (item flagged by ANY of the given checkers — OR semantics) +
+        an optional **min-score filter** on a chosen basis (overall / now / craft).
 
         Also applies the persistent **ruleset score cutoff**: a Magic/Rare item flagged *only* by
         the archetype_set checker is hidden when its score is below the per-rarity cutoff (items
@@ -348,6 +369,10 @@ class Store:
         ``show_all`` (the see-everything view)."""
         clauses: list[str] = []
         params: list = []
+        col = self.SCORE_COLUMNS.get(score_by or "")
+        if col and score_min > 0:
+            clauses.append(f"{col} >= ?")
+            params.append(score_min)
         if not show_all:
             clauses.append("e.flagged = 1")
             cm, cr = self._score_cutoffs()
@@ -382,21 +407,26 @@ class Store:
         sort: str = "recent",
         rarities: list[str] | None = None,
         checkers: list[str] | None = None,
+        score_by: str | None = None,
+        score_min: float = 0.0,
     ) -> list[sqlite3.Row]:
         sql = (
             "SELECT i.hash, i.item_name, i.type_line, i.rarity, i.price_amount, "
             "i.price_currency, i.price_type, i.whisper, i.listed_at, i.fetched_at, "
             "i.raw_json, e.reasons, e.results, e.score, e.checker_count, e.ruleset_matches, "
+            "e.score_now, e.score_potential, e.score_driver, "
             "e.flagged, e.seen, e.seen_at, e.evaluated_at "
             "FROM evaluations e JOIN items i ON i.hash = e.hash"
         )
-        where, params = self._queue_filter(show_all, rarities, checkers)
+        where, params = self._queue_filter(show_all, rarities, checkers, score_by, score_min)
         sql += where
-        # Seen items always sink to the bottom; within that, by score, checker/ruleset match
-        # count, or recency.
+        # Seen items always sink to the bottom; within that, by score (overall / as-is /
+        # craft potential), checker/ruleset match count, or recency.
         primary = {
             "matches": "json_array_length(COALESCE(e.reasons, '[]')) DESC",
             "score": "(e.score IS NULL) ASC, e.score DESC",
+            "now": "(e.score_now IS NULL) ASC, e.score_now DESC",
+            "craft": "(e.score_potential IS NULL) ASC, e.score_potential DESC",
             "checkers": "COALESCE(e.checker_count, 0) DESC",
             "ruleset": "COALESCE(e.ruleset_matches, 0) DESC",
         }.get(sort, "e.evaluated_at DESC")
@@ -409,8 +439,10 @@ class Store:
         show_all: bool = False,
         rarities: list[str] | None = None,
         checkers: list[str] | None = None,
+        score_by: str | None = None,
+        score_min: float = 0.0,
     ) -> int:
-        where, params = self._queue_filter(show_all, rarities, checkers)
+        where, params = self._queue_filter(show_all, rarities, checkers, score_by, score_min)
         sql = "SELECT COUNT(*) AS n FROM evaluations e JOIN items i ON i.hash = e.hash" + where
         with self._lock:
             return int(self._conn.execute(sql, params).fetchone()["n"])

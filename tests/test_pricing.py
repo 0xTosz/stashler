@@ -371,6 +371,42 @@ def test_trade_url_includes_empty_affix_slots():
     assert ids["prefix"] not in stats         # 3 prefixes filled -> no empty-prefix filter
 
 
+def test_trade_url_collapses_fungible_groups_into_pseudos():
+    """Three elemental resistances become ONE total-ele-res pseudo (any element mix on the
+    site satisfies it); the consumed component ids never appear alongside it."""
+    from stasher.pricing.tradelink import build_trade_url
+    def aff(h, mn, mx):
+        return {"magnitudes": [{"hash": h, "min": mn, "max": mx}]}
+    item = {"frameType": 2, "baseType": "Vaal Regalia",
+            "extended": {"mods": {"explicit": [
+                aff("explicit.stat_3372524247", "28", "32"),   # fire res
+                aff("explicit.stat_4220027924", "23", "27"),   # cold res
+                aff("explicit.stat_1671376347", "30", "35"),   # lightning res
+                aff("explicit.stat_life", "90", "110")]}}}
+    stats = {f["id"]: f["value"]["min"]
+             for f in _decode_q(build_trade_url(item, league="Standard",
+                 base_url="https://www.pathofexile.com", realm="poe2"))["query"]["stats"][0]["filters"]}
+    assert "pseudo.pseudo_total_elemental_resistance" in stats
+    assert stats["pseudo.pseudo_total_elemental_resistance"] >= 81   # 28+23+30 floors
+    for consumed in ("explicit.stat_3372524247", "explicit.stat_4220027924",
+                     "explicit.stat_1671376347"):
+        assert consumed not in stats                                 # never double-required
+    assert stats["explicit.stat_life"] == 90                         # non-fungible stays exact
+
+
+def test_trade_url_single_res_stays_exact():
+    """A pseudo covering only ONE of the item's affixes is skipped — the exact line is
+    tighter and just as liquid."""
+    from stasher.pricing.tradelink import build_trade_url
+    item = {"frameType": 2, "baseType": "Vaal Regalia",
+            "extended": {"mods": {"explicit": [
+                {"magnitudes": [{"hash": "explicit.stat_3372524247", "min": "28", "max": "32"}]}]}}}
+    stats = {f["id"] for f in _decode_q(build_trade_url(item, league="Standard",
+                 base_url="https://www.pathofexile.com", realm="poe2"))["query"]["stats"][0]["filters"]}
+    assert "explicit.stat_3372524247" in stats
+    assert "pseudo.pseudo_total_elemental_resistance" not in stats
+
+
 # --- pseudo aggregation on the real harvested ids ----------------------
 
 def _ext(*mags):

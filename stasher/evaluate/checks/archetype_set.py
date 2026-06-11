@@ -69,7 +69,11 @@ class ArchetypeSetChecker:
             headline += " · ⚒ craft"
         # The headline carries the *true* match total (n); only TOP_K per-rule reasons follow, so
         # the count must come from here, not from the surfaced reasons.
-        out: list[CheckResult] = [CheckResult("archetype_set", headline, score=overall, count=n)]
+        out: list[CheckResult] = [CheckResult(
+            "archetype_set", headline, score=overall, count=n,
+            extra={"now": scored.get("now", overall),
+                   "potential": scored.get("potential", overall),
+                   "driver": scored.get("driver", "now")})]
         for m in matches[:TOP_K_REASONS]:
             name = self._name_by_id.get(m["archetype"], m["archetype"])
             cov = "full" if m["full"] else f"{m['satisfied']}/{m['required']}"

@@ -9,6 +9,12 @@
         style="--chip:{{ ch.color }}{% if ch.tier %};--tier:{{ ch.tier_color }}{% endif %}" title="{{ ch.title }}">
     <span class="chip-label">{{ ch.label }}</span>
     {% if ch.tier %}<span class="chip-score-v">{{ ch.tier }} {{ '%.2f'|format(ch.score) }}</span>{% endif %}
+    {% if ch.now is defined and ch.now is not none %}
+    <span class="chip-split" title="as-is value vs crafting potential — the driving side is highlighted">
+      <span class="{{ 'split-on' if ch.driver == 'now' else 'muted' }}">now {{ '%.2f'|format(ch.now) }}</span>
+      <span class="{{ 'split-on' if ch.driver == 'craft' else 'muted' }}">⚒ {{ '%.2f'|format(ch.potential) }}</span>
+    </span>
+    {% endif %}
     <span class="chip-count">{{ ch.text }}</span>
   </span>
   {% else %}

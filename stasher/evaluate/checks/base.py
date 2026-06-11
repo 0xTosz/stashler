@@ -22,6 +22,10 @@ class CheckResult:
     # Optional total-match count for the checker (e.g. archetype_set's full rule-match total,
     # which exceeds the few per-rule reasons it surfaces). Drives the queue chip's count/sort.
     count: int | None = None
+    # Optional structured extras a checker attaches to its headline result — the archetype_set
+    # checker carries the now/potential split ({"now", "potential", "driver"}) here, which the
+    # engine lifts onto the Evaluation for queue display/filtering.
+    extra: dict | None = None
 
 
 @runtime_checkable
