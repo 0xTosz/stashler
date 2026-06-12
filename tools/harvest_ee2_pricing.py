@@ -48,7 +48,7 @@ ATTRIBUTES_INFO = [
 
 
 def _fetch(path: str) -> str:
-    req = urllib.request.Request(RAW + path, headers={"User-Agent": "stasher-harvest"})
+    req = urllib.request.Request(RAW + path, headers={"User-Agent": "stashler-harvest (+https://github.com/0xTosz/stashler; contact: stashlerdev@gmail.com)"})
     return urllib.request.urlopen(req, timeout=60).read().decode("utf-8")
 
 
