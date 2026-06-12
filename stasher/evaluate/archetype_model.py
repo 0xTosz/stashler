@@ -653,8 +653,12 @@ class Archetype:
             now = self.value.score * kept_quality * base_factor * coverage
             potential = now
             if not full and reachable and free > 0:
+                # Finishing an item does NOT fix the rolls already locked on it: the kept
+                # portion contributes at its actual tier quality; only the missing slots
+                # earn (craftability-discounted) full credit. Without ``kept_quality``
+                # here, trash-tier combination matches dominated the craft S tier.
                 potential = max(now, self.value.score * base_factor
-                                * (coverage + (1.0 - coverage) * G))
+                                * (kept_quality * coverage + (1.0 - coverage) * G))
         now = max(0.0, min(1.0, now))
         potential = max(0.0, min(1.0, potential))
         return {
